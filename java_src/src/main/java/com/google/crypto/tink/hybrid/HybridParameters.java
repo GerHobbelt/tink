@@ -14,12 +14,16 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-package com.google.crypto.tink.jwt;
+package com.google.crypto.tink.hybrid;
 
 import com.google.crypto.tink.Parameters;
+import com.google.crypto.tink.annotations.Alpha;
+import com.google.errorprone.annotations.Immutable;
 
-/** Represents a description of a {@link JwtMacKey} excluding the randomly chosen key material. */
-public abstract class JwtMacParameters extends Parameters {
-  /** If true, no {@code "kid"} header is allowed when verifying a token. */
-  public abstract boolean allowKidAbsent();
-}
+/**
+ * Represents a description of a {@link HybridPrivateKey} and the corresponding {@link
+ * HybridPublicKey} excluding the randomly chosen key material.
+ */
+@Immutable
+@Alpha
+public abstract class HybridParameters extends Parameters {}
