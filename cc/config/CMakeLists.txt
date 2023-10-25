@@ -1,7 +1,5 @@
 tink_module(config)
 
-add_subdirectory(internal)
-
 tink_cc_library(
   NAME tink_config
   SRCS
@@ -40,6 +38,19 @@ tink_cc_library(
     tink::internal::fips_utils
     tink::internal::registry_impl
     tink::util::status
+)
+
+tink_cc_library(
+  NAME global_registry
+  SRCS
+    global_registry.cc
+    global_registry.h
+  DEPS
+    absl::check
+    tink::core::configuration
+    tink::core::key_gen_configuration
+    tink::internal::configuration_impl
+    tink::internal::key_gen_configuration_impl
 )
 
 tink_cc_library(
@@ -228,6 +239,20 @@ tink_cc_test(
 )
 
 tink_cc_test(
+  NAME global_registry_test
+  SRCS
+    global_registry_test.cc
+  DEPS
+    tink::config::global_registry
+    gmock
+    absl::status
+    tink::core::keyset_handle
+    tink::util::test_matchers
+    tink::proto::aes_gcm_cc_proto
+    tink::proto::tink_cc_proto
+)
+
+tink_cc_test(
   NAME fips_140_2_test
   SRCS
     fips_140_2_test.cc
@@ -235,7 +260,12 @@ tink_cc_test(
     tink::config::fips_140_2
     tink::config::key_gen_fips_140_2
     gmock
+    tink::core::aead
+    tink::core::chunked_mac
     tink::core::keyset_handle
+    tink::core::mac
+    tink::core::public_key_sign
+    tink::core::public_key_verify
     tink::aead::aead_key_templates
     tink::aead::aes_ctr_hmac_aead_key_manager
     tink::aead::aes_gcm_key_manager
@@ -278,9 +308,21 @@ tink_cc_test(
   SRCS
     v0_test.cc
   DEPS
+    tink::config::key_gen_v0
     tink::config::v0
     gmock
+    tink::core::aead
+    tink::core::chunked_mac
     tink::core::configuration
+    tink::core::deterministic_aead
+    tink::core::hybrid_decrypt
+    tink::core::hybrid_encrypt
+    tink::core::keyset_handle
+    tink::core::mac
+    tink::core::public_key_sign
+    tink::core::public_key_verify
+    tink::core::streaming_aead
+    tink::aead::aead_key_templates
     tink::aead::aes_ctr_hmac_aead_key_manager
     tink::aead::aes_eax_key_manager
     tink::aead::aes_gcm_key_manager
@@ -290,11 +332,13 @@ tink_cc_test(
     tink::hybrid::ecies_aead_hkdf_public_key_manager
     tink::hybrid::internal::hpke_public_key_manager
     tink::internal::configuration_impl
+    tink::internal::keyset_wrapper_store
     tink::mac::aes_cmac_key_manager
     tink::mac::hmac_key_manager
     tink::prf::aes_cmac_prf_key_manager
     tink::prf::hkdf_prf_key_manager
     tink::prf::hmac_prf_key_manager
+    tink::prf::prf_set
     tink::signature::ecdsa_verify_key_manager
     tink::signature::ed25519_verify_key_manager
     tink::signature::rsa_ssa_pkcs1_verify_key_manager
@@ -314,6 +358,8 @@ tink_cc_test(
     tink::config::key_gen_v0
     gmock
     tink::core::key_gen_configuration
+    tink::core::keyset_handle
+    tink::aead::aead_key_templates
     tink::aead::aes_ctr_hmac_aead_key_manager
     tink::aead::aes_eax_key_manager
     tink::aead::aes_gcm_key_manager
