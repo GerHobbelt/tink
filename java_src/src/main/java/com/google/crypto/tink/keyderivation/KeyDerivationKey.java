@@ -14,18 +14,20 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef TINK_AEAD_AES_GCM_PROTO_SERIALIZATION_H_
-#define TINK_AEAD_AES_GCM_PROTO_SERIALIZATION_H_
+package com.google.crypto.tink.keyderivation;
 
-#include "tink/util/status.h"
+import com.google.crypto.tink.Key;
 
-namespace crypto {
-namespace tink {
-
-// Registers proto parsers and serializers for AES-GCM parameters and keys.
-crypto::tink::util::Status RegisterAesGcmProtoSerialization();
-
-}  // namespace tink
-}  // namespace crypto
-
-#endif  // TINK_AEAD_AES_GCM_PROTO_SERIALIZATION_H_
+/**
+ * Represents a function to derive a key.
+ *
+ * <p>Tink Key Derivation is given by the primitive which maps a {@code byte[] salt} to a Keyset.
+ * For each key, a {@link KeyDerivationKey} maps a {@code byte[] salt} to a new "derived" {@code
+ * Key}. For a Keyset containing multiple derivation keys, the derived keyset is obtained by mapping
+ * each key according to this map (for the same {@code byte[] salt}), and inserting them into a new
+ * keyset.
+ */
+public abstract class KeyDerivationKey extends Key {
+  @Override
+  public abstract KeyDerivationParameters getParameters();
+}
