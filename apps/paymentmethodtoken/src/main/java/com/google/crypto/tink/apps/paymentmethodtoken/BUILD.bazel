@@ -6,9 +6,9 @@ java_library(
     name = "google_payments_public_keys_manager",
     srcs = ["GooglePaymentsPublicKeysManager.java"],
     deps = [
+        ":keys_downloader",
         "@maven//:com_google_errorprone_error_prone_annotations",
         "@maven//:com_google_http_client_google_http_client",
-        "@tink_java//src/main/java/com/google/crypto/tink/util:keys_downloader",
     ],
 )
 
@@ -93,7 +93,6 @@ java_library(
         ":payment_method_token_util",
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_errorprone_error_prone_annotations",
-        "@maven//:joda_time_joda_time",
         "@tink_java//src/main/java/com/google/crypto/tink:hybrid_decrypt",
         "@tink_java//src/main/java/com/google/crypto/tink/subtle:base64",
         "@tink_java//src/main/java/com/google/crypto/tink/subtle:ecdsa_verify_jce",
@@ -140,5 +139,15 @@ java_library(
         "@tink_java//src/main/java/com/google/crypto/tink/subtle:base64",
         "@tink_java//src/main/java/com/google/crypto/tink/subtle:elliptic_curves",
         "@tink_java//src/main/java/com/google/crypto/tink/util:secret_big_integer",
+    ],
+)
+
+java_library(
+    name = "keys_downloader",
+    srcs = ["KeysDownloader.java"],
+    deps = [
+        "@maven//:com_google_code_findbugs_jsr305",
+        "@maven//:com_google_errorprone_error_prone_annotations",
+        "@maven//:com_google_http_client_google_http_client",
     ],
 )

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 #ifndef TINK_CONFIGURATION_H_
 #define TINK_CONFIGURATION_H_
@@ -27,8 +27,7 @@ namespace internal {
 class ConfigurationImpl;
 }
 
-// Enables primitive generation by storing necessary primitive wrappers and key
-// type managers.
+// Generates primitives using stored primitive wrappers and key type managers.
 class Configuration {
  public:
   Configuration() = default;

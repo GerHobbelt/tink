@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-package com.google.crypto.tink.util;
+package com.google.crypto.tink.apps.rewardedads;
 
 import com.google.api.client.http.GenericUrl;
 import com.google.api.client.http.HttpHeaders;
@@ -51,13 +51,8 @@ import javax.annotation.concurrent.GuardedBy;
  *
  * <p>When initializing your server, we also recommend that you call {@link #refreshInBackground()}
  * to proactively fetch the data.
- *
- * @since 1.1.0
- * @deprecated This is not supported by Tink, as it incurs a dependency on <code>
- *     com.google.api.client.http</code>. If you need this, please copy it into your codebase.
  */
-@Deprecated
-public class KeysDownloader {
+class KeysDownloader {
   private static final Charset UTF_8 = Charset.forName("UTF-8");
 
   /** Default HTTP transport used by this class. */
