@@ -558,11 +558,54 @@ tink_cc_test(
 )
 
 tink_cc_library(
+  NAME parser_index
+  SRCS
+    parser_index.h
+  DEPS
+    tink::internal::serialization
+)
+
+tink_cc_test(
+  NAME parser_index_test
+  SRCS
+    parser_index_test.cc
+  DEPS
+    tink::internal::parser_index
+    tink::internal::serialization
+    gmock
+)
+
+tink_cc_library(
+  NAME serializer_index
+  SRCS
+    serializer_index.h
+  DEPS
+    tink::internal::serialization
+    tink::core::key
+    tink::core::parameters
+)
+
+tink_cc_test(
+  NAME serializer_index_test
+  SRCS
+    serializer_index_test.cc
+  DEPS
+    tink::internal::serialization
+    tink::internal::serializer_index
+    gmock
+    tink::core::key
+    tink::core::parameters
+)
+
+tink_cc_library(
   NAME parameters_parser
   SRCS
     parameters_parser.h
   DEPS
+    tink::internal::parser_index
+    tink::internal::serialization
     absl::strings
+    tink::core::parameters
     tink::util::statusor
 )
 
@@ -572,6 +615,7 @@ tink_cc_test(
     parameters_parser_test.cc
   DEPS
     tink::internal::parameters_parser
+    tink::internal::parser_index
     tink::internal::serialization
     gmock
     tink::core::parameters
@@ -583,7 +627,10 @@ tink_cc_library(
   SRCS
     parameters_serializer.h
   DEPS
+    tink::internal::serialization
+    tink::internal::serializer_index
     absl::strings
+    tink::core::parameters
     tink::util::statusor
 )
 
@@ -594,6 +641,7 @@ tink_cc_test(
   DEPS
     tink::internal::parameters_serializer
     tink::internal::serialization
+    tink::internal::serializer_index
     gmock
     tink::core::parameters
     tink::util::test_matchers
@@ -604,8 +652,11 @@ tink_cc_library(
   SRCS
     key_parser.h
   DEPS
+    tink::internal::parser_index
+    tink::internal::serialization
     absl::function_ref
     absl::strings
+    tink::core::key
     tink::core::secret_key_access_token
     tink::util::statusor
 )
@@ -616,6 +667,7 @@ tink_cc_test(
     key_parser_test.cc
   DEPS
     tink::internal::key_parser
+    tink::internal::parser_index
     tink::internal::serialization
     gmock
     tink::core::insecure_secret_key_access
@@ -629,7 +681,10 @@ tink_cc_library(
   SRCS
     key_serializer.h
   DEPS
+    tink::internal::serialization
+    tink::internal::serializer_index
     absl::function_ref
+    tink::core::key
     tink::core::secret_key_access_token
     tink::util::statusor
 )
@@ -641,6 +696,7 @@ tink_cc_test(
   DEPS
     tink::internal::key_serializer
     tink::internal::serialization
+    tink::internal::serializer_index
     gmock
     tink::core::insecure_secret_key_access
     tink::core::key

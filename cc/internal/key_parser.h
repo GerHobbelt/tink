@@ -18,11 +18,15 @@
 #define TINK_INTERNAL_KEY_PARSER_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <typeindex>
 
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "tink/internal/parser_index.h"
+#include "tink/internal/serialization.h"
+#include "tink/key.h"
 #include "tink/secret_key_access_token.h"
 #include "tink/util/statusor.h"
 
@@ -31,8 +35,16 @@ namespace tink {
 namespace internal {
 
 // Non-template base class that can be used with internal registry map.
-class KeyParserBase {
+class KeyParser {
  public:
+  // Parses a `serialization` into a key.
+  //
+  // This function is usually called on a `Serialization` subclass matching the
+  // value returned by `ObjectIdentifier()`. However, implementations should
+  // check that this is the case.
+  virtual util::StatusOr<std::unique_ptr<Key>> ParseKey(
+      const Serialization& serialization, SecretKeyAccessToken token) const = 0;
+
   // Returns the object identifier for `SerializationT`, which is only valid
   // for the lifetime of this object.
   //
@@ -47,39 +59,47 @@ class KeyParserBase {
 
   // Returns an index that can be used to look up the `KeyParser`
   // object registered for the `KeyT` type in a registry.
-  virtual std::type_index TypeIndex() const = 0;
+  virtual ParserIndex Index() const = 0;
 
-  virtual ~KeyParserBase() = default;
+  virtual ~KeyParser() = default;
 };
 
 // Parses `SerializationT` objects into `KeyT` objects.
 template <typename SerializationT, typename KeyT>
-class KeyParser : public KeyParserBase {
+class KeyParserImpl : public KeyParser {
  public:
   // Creates a key parser with `object_identifier` and parsing `function`. The
   // referenced `function` should outlive the created key parser object.
-  explicit KeyParser(absl::string_view object_identifier,
-                     absl::FunctionRef<util::StatusOr<KeyT>(
-                         SerializationT, SecretKeyAccessToken)>
-                         function)
+  explicit KeyParserImpl(absl::string_view object_identifier,
+                         absl::FunctionRef<util::StatusOr<KeyT>(
+                             SerializationT, SecretKeyAccessToken)>
+                             function)
       : object_identifier_(object_identifier), function_(function) {}
 
-  // Parses a `serialization` into a key.
-  //
-  // This function is usually called with a `SerializationT` matching the
-  // value returned by `ObjectIdentifier()`. However, implementations should
-  // check that this is the case.
-  util::StatusOr<KeyT> ParseKey(SerializationT serialization,
-                                SecretKeyAccessToken token) const {
-    return function_(serialization, token);
+  util::StatusOr<std::unique_ptr<Key>> ParseKey(
+      const Serialization& serialization,
+      SecretKeyAccessToken token) const override {
+    if (serialization.ObjectIdentifier() != object_identifier_) {
+      return util::Status(absl::StatusCode::kInvalidArgument,
+                          "Invalid object identifier for this key parser.");
+    }
+    const SerializationT* st =
+        dynamic_cast<const SerializationT*>(&serialization);
+    if (st == nullptr) {
+      return util::Status(absl::StatusCode::kInvalidArgument,
+                          "Invalid serialization type for this key parser.");
+    }
+    util::StatusOr<KeyT> key = function_(*st, token);
+    if (!key.ok()) return key.status();
+    return {absl::make_unique<KeyT>(std::move(*key))};
   }
 
   absl::string_view ObjectIdentifier() const override {
     return object_identifier_;
   }
 
-  std::type_index TypeIndex() const override {
-    return std::type_index(typeid(KeyT));
+  ParserIndex Index() const override {
+    return ParserIndex::Create<SerializationT>(object_identifier_);
   }
 
  private:

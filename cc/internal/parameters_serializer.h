@@ -18,10 +18,14 @@
 #define TINK_INTERNAL_PARAMETERS_SERIALIZER_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <typeindex>
 
 #include "absl/strings/string_view.h"
+#include "tink/internal/serialization.h"
+#include "tink/internal/serializer_index.h"
+#include "tink/parameters.h"
 #include "tink/util/statusor.h"
 
 namespace crypto {
@@ -29,8 +33,12 @@ namespace tink {
 namespace internal {
 
 // Non-template base class that can be used with internal registry map.
-class ParametersSerializerBase {
+class ParametersSerializer {
  public:
+  // Returns the serialization of `parameters`.
+  virtual util::StatusOr<std::unique_ptr<Serialization>> SerializeParameters(
+      const Parameters& parameters) const = 0;
+
   // Returns the object identifier for this serialization, which is only valid
   // for the lifetime of this object.
   //
@@ -45,33 +53,40 @@ class ParametersSerializerBase {
 
   // Returns an index that can be used to look up the `ParametersSerializer`
   // object registered for the `ParametersT` type in a registry.
-  virtual std::type_index TypeIndex() const = 0;
+  virtual SerializerIndex Index() const = 0;
 
-  virtual ~ParametersSerializerBase() = default;
+  virtual ~ParametersSerializer() = default;
 };
 
 // Serializes `ParametersT` objects into `SerializationT` objects.
 template <typename ParametersT, typename SerializationT>
-class ParametersSerializer : public ParametersSerializerBase {
+class ParametersSerializerImpl : public ParametersSerializer {
  public:
-  explicit ParametersSerializer(
+  explicit ParametersSerializerImpl(
       absl::string_view object_identifier,
       const std::function<util::StatusOr<SerializationT>(ParametersT)>&
           function)
       : object_identifier_(object_identifier), function_(function) {}
 
-  // Returns the serialization of `parameters`.
-  util::StatusOr<SerializationT> SerializeParameters(
-      ParametersT parameters) const {
-    return function_(parameters);
+  util::StatusOr<std::unique_ptr<Serialization>> SerializeParameters(
+      const Parameters& parameters) const override {
+    const ParametersT* pt = dynamic_cast<const ParametersT*>(&parameters);
+    if (pt == nullptr) {
+      return util::Status(
+          absl::StatusCode::kInvalidArgument,
+          "Invalid parameters type for this parameters serializer.");
+    }
+    util::StatusOr<SerializationT> serialization = function_(*pt);
+    if (!serialization.ok()) return serialization.status();
+    return {absl::make_unique<SerializationT>(std::move(*serialization))};
   }
 
   absl::string_view ObjectIdentifier() const override {
     return object_identifier_;
   }
 
-  std::type_index TypeIndex() const override {
-    return std::type_index(typeid(ParametersT));
+  SerializerIndex Index() const override {
+    return SerializerIndex::Create<ParametersT, SerializationT>();
   }
 
  private:

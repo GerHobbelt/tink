@@ -16,10 +16,13 @@
 
 #include "tink/internal/key_serializer.h"
 
+#include <memory>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "tink/insecure_secret_key_access.h"
 #include "tink/internal/serialization.h"
+#include "tink/internal/serializer_index.h"
 #include "tink/key.h"
 #include "tink/parameters.h"
 #include "tink/secret_key_access_token.h"
@@ -30,6 +33,7 @@ namespace tink {
 namespace internal {
 
 using ::crypto::tink::test::IsOk;
+using ::crypto::tink::test::StatusIs;
 using ::testing::Eq;
 
 class ExampleParameters : public Parameters {
@@ -40,6 +44,18 @@ class ExampleParameters : public Parameters {
 };
 
 class ExampleKey : public Key {
+ public:
+  const Parameters& GetParameters() const override { return parameters_; }
+
+  absl::optional<int> GetIdRequirement() const override { return 123; }
+
+  bool operator==(const Key& other) const override { return true; }
+
+ private:
+  ExampleParameters parameters_;
+};
+
+class DifferentKey : public Key {
  public:
   const Parameters& GetParameters() const override { return parameters_; }
 
@@ -63,19 +79,37 @@ util::StatusOr<ExampleSerialization> Serialize(ExampleKey key,
   return ExampleSerialization();
 }
 
-TEST(KeyParserTest, Create) {
-  KeySerializer<ExampleKey, ExampleSerialization> serializer(Serialize);
+TEST(KeySerializerTest, Create) {
+  std::unique_ptr<KeySerializer> serializer =
+      absl::make_unique<KeySerializerImpl<ExampleKey, ExampleSerialization>>(
+          Serialize);
 
-  EXPECT_THAT(serializer.TypeIndex(), Eq(std::type_index(typeid(ExampleKey))));
+  EXPECT_THAT(serializer->Index(),
+              Eq(SerializerIndex::Create<ExampleKey, ExampleSerialization>()));
 }
 
-TEST(KeyParserTest, SerializeKey) {
-  KeySerializer<ExampleKey, ExampleSerialization> serializer(Serialize);
+TEST(KeySerializerTest, SerializeKey) {
+  std::unique_ptr<KeySerializer> serializer =
+      absl::make_unique<KeySerializerImpl<ExampleKey, ExampleSerialization>>(
+          Serialize);
 
-  util::StatusOr<ExampleSerialization> serialization =
-      serializer.SerializeKey(ExampleKey(), InsecureSecretKeyAccess::Get());
+  ExampleKey key;
+  util::StatusOr<std::unique_ptr<Serialization>> serialization =
+      serializer->SerializeKey(key, InsecureSecretKeyAccess::Get());
   ASSERT_THAT(serialization, IsOk());
-  EXPECT_THAT(serialization->ObjectIdentifier(), Eq("example_type_url"));
+  EXPECT_THAT((*serialization)->ObjectIdentifier(), Eq("example_type_url"));
+}
+
+TEST(KeySerializerTest, SerializeKeyWithInvalidKeyType) {
+  std::unique_ptr<KeySerializer> serializer =
+      absl::make_unique<KeySerializerImpl<ExampleKey, ExampleSerialization>>(
+          Serialize);
+
+  DifferentKey key;
+  util::StatusOr<std::unique_ptr<Serialization>> serialization =
+      serializer->SerializeKey(key, InsecureSecretKeyAccess::Get());
+  ASSERT_THAT(serialization.status(),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace internal
