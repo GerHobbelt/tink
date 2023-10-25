@@ -270,9 +270,7 @@ func TestHKDFDeriveKey(t *testing.T) {
 
 			rand := random.GetRandomBytes(keySize)
 			buf := &bytes.Buffer{}
-			if p, _ := buf.Write(rand); p != len(rand) {
-				t.Fatalf("incomplete Write() = %d bytes, want %d bytes", p, len(rand))
-			}
+			buf.Write(rand) // never returns a non-nil error
 
 			k, err := keyManager.DeriveKey(serializedKeyFormat, buf)
 			if err != nil {
@@ -387,6 +385,34 @@ func TestHKDFDeriveKeyFailsWithMalformedSerializedKeyFormat(t *testing.T) {
 	buf := bytes.NewBuffer(random.GetRandomBytes(keySize))
 	if _, err := keyManager.DeriveKey(malformedSerializedKeyFormat, buf); err == nil {
 		t.Errorf("keyManager.DeriveKey() err = nil, want non-nil")
+	}
+}
+
+func TestAESGCMDeriveKeyFailsWithInsufficientRandomness(t *testing.T) {
+	km, err := registry.GetKeyManager(testutil.HKDFPRFTypeURL)
+	if err != nil {
+		t.Fatalf("registry.GetKeyManager(%q) err = %v, want nil", testutil.HKDFPRFTypeURL, err)
+	}
+	keyManager, ok := km.(internalregistry.DerivableKeyManager)
+	if !ok {
+		t.Fatalf("key manager is not DerivableKeyManager")
+	}
+	keyFormat, err := proto.Marshal(testutil.NewHKDFPRFKeyFormat(commonpb.HashType_SHA256, []byte("salty")))
+	if err != nil {
+		t.Fatalf("proto.Marshal() err = %v, want nil", err)
+	}
+	var keySize uint32 = 32
+	{
+		buf := bytes.NewBuffer(random.GetRandomBytes(keySize))
+		if _, err := keyManager.DeriveKey(keyFormat, buf); err != nil {
+			t.Errorf("keyManager.DeriveKey() err = %v, want nil", err)
+		}
+	}
+	{
+		insufficientBuf := bytes.NewBuffer(random.GetRandomBytes(keySize - 1))
+		if _, err := keyManager.DeriveKey(keyFormat, insufficientBuf); err == nil {
+			t.Errorf("keyManager.DeriveKey() err = nil, want non-nil")
+		}
 	}
 }
 

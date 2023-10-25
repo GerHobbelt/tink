@@ -25,9 +25,12 @@ import (
 	"google.golang.org/protobuf/proto"
 	"github.com/google/tink/go/aead"
 	"github.com/google/tink/go/core/registry"
+	"github.com/google/tink/go/daead"
 	"github.com/google/tink/go/insecurecleartextkeyset"
+	"github.com/google/tink/go/mac"
 	"github.com/google/tink/go/prf"
 	"github.com/google/tink/go/signature"
+	"github.com/google/tink/go/streamingaead"
 	aesgcmpb "github.com/google/tink/go/proto/aes_gcm_go_proto"
 	commonpb "github.com/google/tink/go/proto/common_go_proto"
 	hkdfpb "github.com/google/tink/go/proto/hkdf_prf_go_proto"
@@ -40,7 +43,7 @@ func TestPRFBasedDeriver(t *testing.T) {
 		template *tinkpb.KeyTemplate
 	}{
 		{
-			name:     "SHA256",
+			name:     "HKDF_SHA256",
 			template: prf.HKDFSHA256PRFKeyTemplate(),
 		},
 	}
@@ -67,12 +70,56 @@ func TestPRFBasedDeriver(t *testing.T) {
 			template: aead.XChaCha20Poly1305KeyTemplate(),
 		},
 		{
+			name:     "AES256_SIV",
+			template: daead.AESSIVKeyTemplate(),
+		},
+		{
+			name:     "HMAC_SHA256_128BITTAG",
+			template: mac.HMACSHA256Tag128KeyTemplate(),
+		},
+		{
+			name:     "HMAC_SHA256_256BITTAG",
+			template: mac.HMACSHA256Tag256KeyTemplate(),
+		},
+		{
+			name:     "HMAC_SHA512_256BITTAG",
+			template: mac.HMACSHA512Tag256KeyTemplate(),
+		},
+		{
+			name:     "HMAC_SHA512_512BITTAG",
+			template: mac.HMACSHA512Tag512KeyTemplate(),
+		},
+		{
 			name:     "HKDF_SHA256",
 			template: prf.HKDFSHA256PRFKeyTemplate(),
 		},
 		{
+			name:     "HMAC_SHA256_PRF",
+			template: prf.HMACSHA256PRFKeyTemplate(),
+		},
+		{
+			name:     "HMAC_SHA512_PRF",
+			template: prf.HMACSHA512PRFKeyTemplate(),
+		},
+		{
 			name:     "ED25519",
 			template: signature.ED25519KeyTemplate(),
+		},
+		{
+			name:     "AES128_GCM_HKDF_4KB",
+			template: streamingaead.AES128GCMHKDF4KBKeyTemplate(),
+		},
+		{
+			name:     "AES128_GCM_HKDF_1MB",
+			template: streamingaead.AES128GCMHKDF1MBKeyTemplate(),
+		},
+		{
+			name:     "AES256_GCM_HKDF_4KB",
+			template: streamingaead.AES256GCMHKDF4KBKeyTemplate(),
+		},
+		{
+			name:     "AES256_GCM_HKDF_1MB",
+			template: streamingaead.AES256GCMHKDF1MBKeyTemplate(),
 		},
 	}
 	salts := [][]byte{nil, []byte("salt")}
