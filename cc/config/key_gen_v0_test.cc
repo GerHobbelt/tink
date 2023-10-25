@@ -14,22 +14,31 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "tink/config/key_gen_fips_140_2.h"
+#include "tink/config/key_gen_v0.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "tink/aead/aead_key_templates.h"
 #include "tink/aead/aes_ctr_hmac_aead_key_manager.h"
+#include "tink/aead/aes_eax_key_manager.h"
 #include "tink/aead/aes_gcm_key_manager.h"
-#include "tink/internal/fips_utils.h"
+#include "tink/aead/aes_gcm_siv_key_manager.h"
+#include "tink/aead/xchacha20_poly1305_key_manager.h"
+#include "tink/daead/aes_siv_key_manager.h"
+#include "tink/hybrid/ecies_aead_hkdf_public_key_manager.h"
+#include "tink/hybrid/internal/hpke_public_key_manager.h"
 #include "tink/internal/key_gen_configuration_impl.h"
-#include "tink/keyset_handle.h"
+#include "tink/key_gen_configuration.h"
 #include "tink/mac/aes_cmac_key_manager.h"
 #include "tink/mac/hmac_key_manager.h"
+#include "tink/prf/aes_cmac_prf_key_manager.h"
+#include "tink/prf/hkdf_prf_key_manager.h"
 #include "tink/prf/hmac_prf_key_manager.h"
 #include "tink/signature/ecdsa_verify_key_manager.h"
+#include "tink/signature/ed25519_verify_key_manager.h"
 #include "tink/signature/rsa_ssa_pkcs1_verify_key_manager.h"
 #include "tink/signature/rsa_ssa_pss_verify_key_manager.h"
+#include "tink/streamingaead/aes_ctr_hmac_streaming_key_manager.h"
+#include "tink/streamingaead/aes_gcm_hkdf_streaming_key_manager.h"
 #include "tink/util/test_matchers.h"
 
 namespace crypto {
@@ -37,65 +46,38 @@ namespace tink {
 namespace {
 
 using ::crypto::tink::test::IsOk;
-using ::crypto::tink::test::StatusIs;
 
-class KeyGenFips1402Test : public testing::Test {
- protected:
-  void TearDown() override { internal::UnSetFipsRestricted(); }
-};
-
-TEST_F(KeyGenFips1402Test, KeyGenConfigFips1402) {
-  if (!internal::IsFipsEnabledInSsl()) {
-    GTEST_SKIP() << "Only test in FIPS mode";
-  }
-
+TEST(KeyGenV0Test, KeyGenConfigV0) {
   util::StatusOr<const internal::KeyTypeInfoStore*> store =
-      internal::KeyGenConfigurationImpl::GetKeyTypeInfoStore(
-          KeyGenConfigFips140_2());
+      internal::KeyGenConfigurationImpl::GetKeyTypeInfoStore(KeyGenConfigV0());
   ASSERT_THAT(store, IsOk());
 
   EXPECT_THAT((*store)->Get(HmacKeyManager().get_key_type()), IsOk());
+  EXPECT_THAT((*store)->Get(AesCmacKeyManager().get_key_type()), IsOk());
   EXPECT_THAT((*store)->Get(AesCtrHmacAeadKeyManager().get_key_type()), IsOk());
   EXPECT_THAT((*store)->Get(AesGcmKeyManager().get_key_type()), IsOk());
+  EXPECT_THAT((*store)->Get(AesGcmSivKeyManager().get_key_type()), IsOk());
+  EXPECT_THAT((*store)->Get(AesEaxKeyManager().get_key_type()), IsOk());
+  EXPECT_THAT((*store)->Get(XChaCha20Poly1305KeyManager().get_key_type()),
+              IsOk());
+  EXPECT_THAT((*store)->Get(AesSivKeyManager().get_key_type()), IsOk());
+  EXPECT_THAT((*store)->Get(AesGcmHkdfStreamingKeyManager().get_key_type()),
+              IsOk());
+  EXPECT_THAT((*store)->Get(AesCtrHmacStreamingKeyManager().get_key_type()),
+              IsOk());
+  EXPECT_THAT((*store)->Get(EciesAeadHkdfPublicKeyManager().get_key_type()),
+              IsOk());
+  EXPECT_THAT((*store)->Get(internal::HpkePublicKeyManager().get_key_type()),
+              IsOk());
   EXPECT_THAT((*store)->Get(HmacPrfKeyManager().get_key_type()), IsOk());
+  EXPECT_THAT((*store)->Get(HkdfPrfKeyManager().get_key_type()), IsOk());
+  EXPECT_THAT((*store)->Get(AesCmacPrfKeyManager().get_key_type()), IsOk());
   EXPECT_THAT((*store)->Get(EcdsaVerifyKeyManager().get_key_type()), IsOk());
   EXPECT_THAT((*store)->Get(RsaSsaPssVerifyKeyManager().get_key_type()),
               IsOk());
   EXPECT_THAT((*store)->Get(RsaSsaPkcs1VerifyKeyManager().get_key_type()),
               IsOk());
-}
-
-TEST_F(KeyGenFips1402Test, KeyGenConfigFips1402FailsInNonFipsMode) {
-  if (internal::IsFipsEnabledInSsl()) {
-    GTEST_SKIP() << "Only test in non-FIPS mode";
-  }
-
-  EXPECT_DEATH_IF_SUPPORTED(
-      KeyGenConfigFips140_2(),
-      "BoringSSL not built with the BoringCrypto module.");
-}
-
-TEST_F(KeyGenFips1402Test, NonFipsTypeNotPresent) {
-  if (!internal::IsFipsEnabledInSsl()) {
-    GTEST_SKIP() << "Only test in FIPS mode";
-  }
-
-  util::StatusOr<const internal::KeyTypeInfoStore*> store =
-      internal::KeyGenConfigurationImpl::GetKeyTypeInfoStore(
-          KeyGenConfigFips140_2());
-  ASSERT_THAT(store, IsOk());
-  EXPECT_THAT((*store)->Get(AesCmacKeyManager().get_key_type()).status(),
-              StatusIs(absl::StatusCode::kNotFound));
-}
-
-TEST_F(KeyGenFips1402Test, GenerateNewKeysetHandle) {
-  if (!internal::IsFipsEnabledInSsl()) {
-    GTEST_SKIP() << "Only test in FIPS mode";
-  }
-
-  EXPECT_THAT(KeysetHandle::GenerateNew(AeadKeyTemplates::Aes128Gcm(),
-                                        KeyGenConfigFips140_2()),
-              IsOk());
+  EXPECT_THAT((*store)->Get(Ed25519VerifyKeyManager().get_key_type()), IsOk());
 }
 
 }  // namespace

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2021 Google LLC
+# Copyright 2022 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,19 +17,17 @@
 set -euo pipefail
 
 #############################################################################
-# Tests for Tink C++ JWT signature example.
+# Tests for Tink CC Deterministic AEAD.
 #############################################################################
 
 : "${TEST_TMPDIR:=$(mktemp -d)}"
 
-readonly CLI_SIGN="$1"
-readonly CLI_VERIFY="$2"
-readonly PRIVATE_KEYSET_FILE="$3"
-readonly PUBLIC_KEYSET_FILE="$4"
-readonly TOKEN_FILE="${TEST_TMPDIR}/token.json"
-readonly TEST_NAME="TinkCcExamplesJwtSignatureTest"
+readonly CLI="$1"
+readonly KEYSET_FILE="$2"
+readonly DATA_FILE="${TEST_TMPDIR}/example_data.txt"
+readonly TEST_NAME="TinkExamplesCcDeterministicAeadTest"
 
-readonly AUDIENCE="JWT audience"
+echo "This is some plaintext to be encrypted." > "${DATA_FILE}"
 
 #######################################
 # A helper function for getting the return code of a command that may fail.
@@ -108,67 +106,110 @@ end_test_case() {
 
 #############################################################################
 
-start_test_case "sign_verify_all_good"
+start_test_case "encrypt"
 
-# Sign.
-test_command "${CLI_SIGN}" \
-  --keyset_filename "${PRIVATE_KEYSET_FILE}" \
-  --audience "${AUDIENCE}" \
-  --token_filename "${TOKEN_FILE}"
-assert_command_succeeded
-
-# Verify.
-test_command "${CLI_VERIFY}" \
-  --keyset_filename "${PUBLIC_KEYSET_FILE}" \
-  --audience "${AUDIENCE}" \
-  --token_filename "${TOKEN_FILE}"
+# Run encryption.
+test_command "${CLI}" \
+  --mode encrypt \
+  --keyset_filename "${KEYSET_FILE}" \
+  --input_filename "${DATA_FILE}" \
+  --output_filename "${DATA_FILE}.encrypted"
 assert_command_succeeded
 
 end_test_case
 
 #############################################################################
 
-start_test_case "verify_fails_with_invalid_token"
+start_test_case "decrypt"
 
-# Sign.
-test_command "${CLI_SIGN}" \
-  --keyset_filename "${PRIVATE_KEYSET_FILE}" \
-  --audience "${AUDIENCE}" \
-  --token_filename "${TOKEN_FILE}"
+# Run decryption.
+test_command "${CLI}" \
+  --mode decrypt \
+  --keyset_filename "${KEYSET_FILE}" \
+  --input_filename "${DATA_FILE}.encrypted" \
+  --output_filename "${DATA_FILE}.decrypted"
 assert_command_succeeded
 
-# Invalid token.
-echo "modified" >> "${TOKEN_FILE}"
+test_command cmp -s "${DATA_FILE}" "${DATA_FILE}.decrypted"
+assert_command_succeeded
 
-# Verify.
-test_command "${CLI_VERIFY}" \
-  --keyset_filename "${PUBLIC_KEYSET_FILE}" \
-  --audience "${AUDIENCE}" \
-  --token_filename "${TOKEN_FILE}"
+end_test_case
+
+#############################################################################
+
+start_test_case "encrypt_decrypt_fails_with_modified_ciphertext"
+
+# Run encryption
+test_command "${CLI}" \
+  --mode encrypt \
+  --keyset_filename "${KEYSET_FILE}" \
+  --input_filename "${DATA_FILE}" \
+  --output_filename "${DATA_FILE}.encrypted"
+assert_command_succeeded
+
+# Modify ciphertext.
+echo "modified" >> "${DATA_FILE}.encrypted"
+
+# Run decryption.
+test_command "${CLI}" \
+  --mode decrypt \
+  --keyset_filename "${KEYSET_FILE}" \
+  --input_filename "${DATA_FILE}.encrypted" \
+  --output_filename "${DATA_FILE}.decrypted"
 assert_command_failed
 
 end_test_case
 
 #############################################################################
 
-start_test_case "verify_fails_with_invalid_audience"
+start_test_case "encrypt_decrypt_succeeds_with_associated_data"
 
-# Sign.
-test_command "${CLI_SIGN}" \
-  --keyset_filename "${PRIVATE_KEYSET_FILE}" \
-  --audience "${AUDIENCE}" \
-  --token_filename "${TOKEN_FILE}"
+# Run encryption.
+ASSOCIATED_DATA="header information"
+test_command "${CLI}" \
+  --mode encrypt \
+  --keyset_filename "${KEYSET_FILE}" \
+  --input_filename "${DATA_FILE}" \
+  --output_filename "${DATA_FILE}.encrypted" \
+  --associated_data "${ASSOCIATED_DATA}"
 assert_command_succeeded
 
-# Modify audience.
-readonly INVALID_AUDIENCE="invalid audience"
+# Run decryption.
+test_command "${CLI}" \
+  --mode decrypt \
+  --keyset_filename "${KEYSET_FILE}" \
+  --input_filename "${DATA_FILE}.encrypted" \
+  --output_filename "${DATA_FILE}.decrypted" \
+  --associated_data "${ASSOCIATED_DATA}"
+assert_command_succeeded
 
-# Verify.
-test_command "${CLI_VERIFY}" \
-  --keyset_filename "${PUBLIC_KEYSET_FILE}" \
-  --audience "${INVALID_AUDIENCE}" \
-  --token_filename "${TOKEN_FILE}"
-assert_command_failed
+cmp --silent "${DATA_FILE}" "${DATA_FILE}.decrypted"
+assert_command_succeeded
 
 end_test_case
 
+#############################################################################
+
+start_test_case "encrypt_decrypt_fails_with_modified_associated_data"
+
+# Run encryption.
+ASSOCIATED_DATA="header information"
+test_command "${CLI}" \
+  --mode encrypt \
+  --keyset_filename "${KEYSET_FILE}" \
+  --input_filename "${DATA_FILE}" \
+  --output_filename "${DATA_FILE}.encrypted" \
+  --associated_data "${ASSOCIATED_DATA}"
+assert_command_succeeded
+
+# Run decryption.
+MODIFIED_ASSOCIATED_DATA="modified header information"
+test_command "${CLI}" \
+  --mode decrypt \
+  --keyset_filename "${KEYSET_FILE}" \
+  --input_filename "${DATA_FILE}.encrypted" \
+  --output_filename "${DATA_FILE}.decrypted" \
+  --associated_data "${MODIFIED_ASSOCIATED_DATA}"
+assert_command_failed
+
+end_test_case

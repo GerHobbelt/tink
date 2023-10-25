@@ -1164,7 +1164,10 @@ public final class KeysetHandle {
    * wrapped in a {@code KeyHandle}.
    *
    * <p>Please do not use this function in new code. Instead, use {@link #getPrimary}.
+   *
+   * @deprecated Use {@link #getPrimary} instead.
    */
+  @Deprecated
   public KeyHandle primaryKey() throws GeneralSecurityException {
     int primaryKeyId = keyset.getPrimaryKeyId();
     for (Keyset.Key key : keyset.getKeyList()) {
@@ -1219,7 +1222,7 @@ public final class KeysetHandle {
    * which are irrelevant to the function computed. Currently, keysets can also be invalid in which
    * case this will return false.
    */
-  boolean equalsKeyset(KeysetHandle other) {
+  public boolean equalsKeyset(KeysetHandle other) {
     if (size() != other.size()) {
       return false;
     }
