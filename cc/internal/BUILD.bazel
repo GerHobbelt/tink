@@ -374,7 +374,6 @@ cc_test(
 
 cc_test(
     name = "rsa_util_test",
-    size = "large",
     srcs = ["rsa_util_test.cc"],
     deps = [
         ":bn_util",
@@ -394,7 +393,6 @@ cc_test(
 
 cc_test(
     name = "ec_util_test",
-    size = "large",
     srcs = ["ec_util_test.cc"],
     data = [
         "//testvectors:ecdh",
@@ -685,12 +683,8 @@ cc_test(
     name = "serializer_index_test",
     srcs = ["serializer_index_test.cc"],
     deps = [
-        ":serialization",
+        ":serialization_test_util",
         ":serializer_index",
-        "//:key",
-        "//:parameters",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_main",
     ],
 )
