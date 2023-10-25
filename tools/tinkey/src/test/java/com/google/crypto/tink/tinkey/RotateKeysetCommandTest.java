@@ -23,12 +23,12 @@ import static org.junit.Assert.assertThrows;
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.InsecureSecretKeyAccess;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.KmsClients;
 import com.google.crypto.tink.TinkJsonProtoKeysetFormat;
 import com.google.crypto.tink.TinkProtoKeysetFormat;
+import com.google.crypto.tink.aead.AeadConfig;
+import com.google.crypto.tink.aead.PredefinedAeadParameters;
 import com.google.crypto.tink.mac.MacConfig;
 import com.google.crypto.tink.mac.PredefinedMacParameters;
-import com.google.crypto.tink.testing.TestUtil;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -42,7 +42,9 @@ import org.junit.runners.JUnit4;
 public class RotateKeysetCommandTest {
   @BeforeClass
   public static void setUp() throws Exception {
+    AeadConfig.register();
     MacConfig.register();
+    KmsClientsFactory.globalInstance().addFactory(TinkeyTestKmsClient::new);
   }
 
   @Test
@@ -85,6 +87,8 @@ public class RotateKeysetCommandTest {
     Path path = Files.createTempDirectory(/* prefix= */ "");
     Path inputFile = Paths.get(path.toString(), "input");
     Path outputFile = Paths.get(path.toString(), "output");
+    Path credentialFile = Paths.get(path.toString(), "credentials");
+    TinkeyTestKmsClient.createCredentialFile(credentialFile);
 
     KeysetHandle inputKeyset =
         KeysetHandle.generateNew(PredefinedMacParameters.HMAC_SHA256_128BITTAG);
@@ -124,11 +128,13 @@ public class RotateKeysetCommandTest {
     Path path = Files.createTempDirectory(/* prefix= */ "");
     Path inputFile = Paths.get(path.toString(), "input");
     Path outputFile = Paths.get(path.toString(), "output");
+    Path credentialFile = Paths.get(path.toString(), "credentials");
+    TinkeyTestKmsClient.createCredentialFile(credentialFile);
 
-    Aead masterKeyAead =
-        KmsClients.getAutoLoaded(TestUtil.GCP_KMS_TEST_KEY_URI)
-            .withCredentials(TestUtil.SERVICE_ACCOUNT_FILE)
-            .getAead(TestUtil.GCP_KMS_TEST_KEY_URI);
+    KeysetHandle masterKeyAeadKeyset =
+        KeysetHandle.generateNew(PredefinedAeadParameters.AES128_GCM);
+    Aead masterKeyAead = masterKeyAeadKeyset.getPrimitive(Aead.class);
+    String masterKeyUri = TinkeyTestKmsClient.createKeyUri(masterKeyAeadKeyset);
 
     KeysetHandle inputKeyset =
         KeysetHandle.generateNew(PredefinedMacParameters.HMAC_SHA256_128BITTAG);
@@ -150,9 +156,9 @@ public class RotateKeysetCommandTest {
           "--key-template",
           "HMAC_SHA256_256BITTAG",
           "--master-key-uri",
-          TestUtil.GCP_KMS_TEST_KEY_URI,
+          masterKeyUri,
           "--credential",
-          TestUtil.SERVICE_ACCOUNT_FILE
+          credentialFile.toString()
         });
 
     KeysetHandle handle =
@@ -172,11 +178,13 @@ public class RotateKeysetCommandTest {
     Path path = Files.createTempDirectory(/* prefix= */ "");
     Path inputFile = Paths.get(path.toString(), "input");
     Path outputFile = Paths.get(path.toString(), "output");
+    Path credentialFile = Paths.get(path.toString(), "credentials");
+    TinkeyTestKmsClient.createCredentialFile(credentialFile);
 
-    Aead masterKeyAead =
-        KmsClients.getAutoLoaded(TestUtil.GCP_KMS_TEST_KEY_URI)
-            .withCredentials(TestUtil.SERVICE_ACCOUNT_FILE)
-            .getAead(TestUtil.GCP_KMS_TEST_KEY_URI);
+    KeysetHandle masterKeyAeadKeyset =
+        KeysetHandle.generateNew(PredefinedAeadParameters.AES128_GCM);
+    Aead masterKeyAead = masterKeyAeadKeyset.getPrimitive(Aead.class);
+    String masterKeyUri = TinkeyTestKmsClient.createKeyUri(masterKeyAeadKeyset);
 
     KeysetHandle inputKeyset =
         KeysetHandle.generateNew(PredefinedMacParameters.HMAC_SHA256_128BITTAG);
@@ -199,9 +207,9 @@ public class RotateKeysetCommandTest {
           "--key-template",
           "HMAC_SHA256_256BITTAG",
           "--master-key-uri",
-          TestUtil.GCP_KMS_TEST_KEY_URI,
+          masterKeyUri,
           "--credential",
-          TestUtil.SERVICE_ACCOUNT_FILE
+          credentialFile.toString()
         });
 
     KeysetHandle handle =
@@ -221,6 +229,13 @@ public class RotateKeysetCommandTest {
     Path path = Files.createTempDirectory(/* prefix= */ "");
     Path inputFile = Paths.get(path.toString(), "input");
     Path outputFile = Paths.get(path.toString(), "output");
+    Path credentialFile = Paths.get(path.toString(), "credentials");
+    TinkeyTestKmsClient.createCredentialFile(credentialFile);
+
+    KeysetHandle masterKeyAeadKeyset =
+        KeysetHandle.generateNew(PredefinedAeadParameters.AES128_GCM);
+    String masterKeyUri = TinkeyTestKmsClient.createKeyUri(masterKeyAeadKeyset);
+
     Files.write(inputFile, new byte[] {});
 
     assertThrows(
@@ -240,9 +255,9 @@ public class RotateKeysetCommandTest {
                   "--key-template",
                   "HMAC_SHA256_256BITTAG",
                   "--master-key-uri",
-                  TestUtil.GCP_KMS_TEST_KEY_URI,
+                  masterKeyUri,
                   "--credential",
-                  TestUtil.SERVICE_ACCOUNT_FILE
+                  credentialFile.toString()
                 }));
   }
 }

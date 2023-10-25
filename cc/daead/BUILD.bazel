@@ -97,6 +97,46 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "failing_daead",
+    srcs = ["failing_daead.cc"],
+    hdrs = ["failing_daead.h"],
+    include_prefix = "tink/daead",
+    deps = [
+        "//:deterministic_aead",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "deterministic_aead_parameters",
+    hdrs = ["deterministic_aead_parameters.h"],
+    include_prefix = "tink/daead",
+    deps = ["//:parameters"],
+)
+
+cc_library(
+    name = "deterministic_aead_key",
+    hdrs = ["deterministic_aead_key.h"],
+    include_prefix = "tink/daead",
+    deps = [
+        ":deterministic_aead_parameters",
+        "//:key",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "aes_siv_parameters",
+    srcs = ["aes_siv_parameters.cc"],
+    hdrs = ["aes_siv_parameters.h"],
+    include_prefix = "tink/daead",
+    deps = [
+        ":deterministic_aead_parameters",
+        "//util:statusor",
+    ],
+)
+
 # tests
 
 cc_test(
@@ -194,17 +234,6 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "failing_daead",
-    srcs = ["failing_daead.cc"],
-    hdrs = ["failing_daead.h"],
-    include_prefix = "tink/daead",
-    deps = [
-        "//:deterministic_aead",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 cc_test(
     name = "failing_daead_test",
     srcs = ["failing_daead_test.cc"],
@@ -212,6 +241,17 @@ cc_test(
         ":failing_daead",
         "//util:test_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "aes_siv_parameters_test",
+    srcs = ["aes_siv_parameters_test.cc"],
+    deps = [
+        ":aes_siv_parameters",
+        "//util:statusor",
+        "//util:test_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

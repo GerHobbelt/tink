@@ -18,7 +18,7 @@
 # source distribution and binary wheels for Linux and macOS.  All Python tests
 # are exectued for each binary wheel and the source distribution.
 
-set -euo pipefail
+set -euox pipefail
 
 declare -a PYTHON_VERSIONS=
 PYTHON_VERSIONS+=("3.7")
@@ -50,8 +50,6 @@ readonly IMAGE="${IMAGE_NAME}@${IMAGE_DIGEST}"
 #######################################
 __create_and_test_wheels_for_linux() {
   echo "### Building and testing Linux binary wheels ###"
-  local -r tink_py_relative_path="${PWD##*/}"
-  local -r workdir="/tmp/tink/${tink_py_relative_path}"
   # Use signatures for getting images from registry (see
   # https://docs.docker.com/engine/security/trust/content_trust/).
   export DOCKER_CONTENT_TRUST=1
@@ -60,16 +58,20 @@ __create_and_test_wheels_for_linux() {
   # file so we save a copy for backup.
   cp WORKSPACE WORKSPACE.bak
 
+  local -r tink_base_dir="/tmp/tink"
+  local -r tink_py_relative_path="${PWD##*/}"
+  local -r workdir="${tink_base_dir}/${tink_py_relative_path}"
   # Build binary wheels.
   docker run \
-    --volume "${TINK_PYTHON_ROOT_PATH}/..:/tmp/tink" \
+    --volume "${TINK_PYTHON_ROOT_PATH}/..:${tink_base_dir}" \
     --workdir "${workdir}" \
+    -e TINK_PYTHON_SETUPTOOLS_OVERRIDE_BASE_PATH="${tink_base_dir}" \
     "${IMAGE}" \
     "${workdir}/tools/distribution/build_linux_binary_wheels.sh"
 
   ## Test binary wheels.
   docker run \
-    --volume "${TINK_PYTHON_ROOT_PATH}/..:/tmp/tink" \
+    --volume "${TINK_PYTHON_ROOT_PATH}/..:${tink_base_dir}" \
     --workdir "${workdir}" \
     "${IMAGE}" \
     "${workdir}/tools/distribution/test_linux_binary_wheels.sh"
@@ -98,11 +100,24 @@ __create_and_test_sdist_for_linux() {
   local latest="${sorted[${#sorted[@]}-1]}"
   enable_py_version "${latest}"
 
+  # Patch the workspace to use http_archive rules which specify the release tag.
+  #
+  # This is done so that an already patched version of WORKSPACE is present in
+  # the sdist. THen, when building from the sdist, the default patching logic
+  # in performed by setup.py will be a no-op.
+  #
+  # TODO(b/281635529): Use a container for a more hermetic testing environment.
+  cp WORKSPACE WORKSPACE.bak
+  TINK_PYTHON_SETUPTOOLS_TAGGED_VERSION="${TINK_VERSION}" \
+    python3 -c "import setup; _patch_workspace('WORKSPACE')"
+
   # Build source distribution.
-  export TINK_PYTHON_SETUPTOOLS_OVERRIDE_BASE_PATH="${TINK_PYTHON_ROOT_PATH}/.."
   python3 setup.py sdist --owner=root --group=root
   local sdist_filename="tink-${TINK_VERSION}.tar.gz"
   cp "dist/${sdist_filename}" release/
+
+  # Restore the original WORKSPACE.
+  mv WORKSPACE.bak WORKSPACE
 
   # Test install from source distribution.
   python3 --version
@@ -166,7 +181,7 @@ enable_py_version() {
   pyenv shell "${version}"
 
   # Update environment.
-  pip install --require-hashes -r \
+  python3 -m pip install --require-hashes -r \
     "${TINK_PYTHON_ROOT_PATH}/tools/distribution/requirements.txt"
 }
 
