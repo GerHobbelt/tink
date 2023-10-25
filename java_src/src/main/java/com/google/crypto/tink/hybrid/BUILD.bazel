@@ -96,6 +96,7 @@ java_library(
         "//proto:config_java_proto",
         "//src/main/java/com/google/crypto/tink/aead:aead_config",
         "//src/main/java/com/google/crypto/tink/config:tink_fips",
+        "//src/main/java/com/google/crypto/tink/daead:deterministic_aead_config",
         "//src/main/java/com/google/crypto/tink/hybrid/internal:hpke_private_key_manager",
     ],
 )
@@ -268,6 +269,7 @@ java_library(
     srcs = ["HpkeProtoSerialization.java"],
     deps = [
         ":hpke_parameters",
+        ":hpke_private_key",
         ":hpke_public_key",
         "//proto:hpke_java_proto",
         "//proto:tink_java_proto",
@@ -283,6 +285,7 @@ java_library(
         "//src/main/java/com/google/crypto/tink/internal:proto_parameters_serialization",
         "//src/main/java/com/google/crypto/tink/internal:util",
         "//src/main/java/com/google/crypto/tink/util:bytes",
+        "//src/main/java/com/google/crypto/tink/util:secret_bytes",
         "@maven//:com_google_code_findbugs_jsr305",
         "@maven//:com_google_protobuf_protobuf_java",
     ],
@@ -382,6 +385,7 @@ android_library(
         "//proto:config_java_proto_lite",
         "//src/main/java/com/google/crypto/tink/aead:aead_config-android",
         "//src/main/java/com/google/crypto/tink/config:tink_fips-android",
+        "//src/main/java/com/google/crypto/tink/daead:deterministic_aead_config-android",
         "//src/main/java/com/google/crypto/tink/hybrid/internal:hpke_private_key_manager-android",
     ],
 )
@@ -554,6 +558,7 @@ android_library(
     srcs = ["HpkeProtoSerialization.java"],
     deps = [
         ":hpke_parameters-android",
+        ":hpke_private_key-android",
         ":hpke_public_key-android",
         "//proto:hpke_java_proto_lite",
         "//proto:tink_java_proto_lite",
@@ -569,6 +574,7 @@ android_library(
         "//src/main/java/com/google/crypto/tink/internal:proto_parameters_serialization-android",
         "//src/main/java/com/google/crypto/tink/internal:util-android",
         "//src/main/java/com/google/crypto/tink/util:bytes-android",
+        "//src/main/java/com/google/crypto/tink/util:secret_bytes-android",
         "@maven//:com_google_code_findbugs_jsr305",
         "@maven//:com_google_protobuf_protobuf_javalite",
     ],

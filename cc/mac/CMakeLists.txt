@@ -198,6 +198,7 @@ tink_cc_library(
     tink::mac::aes_cmac_key
     tink::mac::aes_cmac_parameters
     absl::status
+    absl::optional
     tink::core::partial_key_access
     tink::core::restricted_data
     tink::core::secret_key_access_token
@@ -285,6 +286,7 @@ tink_cc_test(
     absl::status
     crypto
     tink::core::chunked_mac
+    tink::core::insecure_secret_key_access
     tink::core::keyset_handle
     tink::core::mac
     tink::core::partial_key_access

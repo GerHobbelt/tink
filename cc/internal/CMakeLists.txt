@@ -717,6 +717,7 @@ tink_cc_library(
     absl::log
     absl::status
     absl::strings
+    absl::optional
     tink::core::key
     tink::core::secret_key_access_token
     tink::util::status
@@ -753,6 +754,7 @@ tink_cc_library(
     absl::function_ref
     absl::log
     absl::status
+    absl::optional
     tink::core::key
     tink::core::secret_key_access_token
     tink::util::status
@@ -882,7 +884,7 @@ tink_cc_library(
     absl::flat_hash_map
     absl::status
     absl::str_format
-    tink::core::insecure_secret_key_access
+    absl::optional
     tink::core::key
     tink::core::parameters
     tink::util::status
@@ -903,6 +905,7 @@ tink_cc_test(
     tink::internal::serialization_test_util
     gmock
     absl::status
+    tink::core::insecure_secret_key_access
     tink::core::key
     tink::core::parameters
     tink::core::secret_key_access_token
@@ -929,6 +932,7 @@ tink_cc_library(
     absl::memory
     absl::status
     absl::synchronization
+    absl::optional
     tink::core::insecure_secret_key_access
     tink::core::key
     tink::core::parameters
@@ -952,6 +956,7 @@ tink_cc_test(
     tink::internal::serialization_test_util
     gmock
     absl::status
+    absl::optional
     tink::core::insecure_secret_key_access
     tink::core::key
     tink::core::parameters
@@ -1026,7 +1031,8 @@ tink_cc_library(
   SRCS
     configuration_impl.h
   DEPS
-    tink::internal::registry_impl
+    tink::internal::key_type_info_store
+    tink::internal::keyset_wrapper_store
     tink::core::configuration
 )
 
@@ -1036,9 +1042,9 @@ tink_cc_test(
     configuration_impl_test.cc
   DEPS
     tink::internal::configuration_impl
-    tink::internal::registry_impl
     gmock
     tink::core::configuration
+    tink::subtle::random
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::aes_gcm_cc_proto

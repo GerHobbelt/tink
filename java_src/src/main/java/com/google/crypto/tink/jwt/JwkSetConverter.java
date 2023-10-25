@@ -16,10 +16,9 @@
 
 package com.google.crypto.tink.jwt;
 
-import com.google.crypto.tink.Key;
 import com.google.crypto.tink.KeyStatus;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.internal.LegacyProtoKey;
+import com.google.crypto.tink.internal.MutableSerializationRegistry;
 import com.google.crypto.tink.internal.ProtoKeySerialization;
 import com.google.crypto.tink.proto.JwtEcdsaAlgorithm;
 import com.google.crypto.tink.proto.JwtEcdsaPublicKey;
@@ -71,12 +70,9 @@ public final class JwkSetConverter {
       if (entry.getStatus() != KeyStatus.ENABLED) {
         continue;
       }
-      Key publicKey = entry.getKey();
-      if (!(publicKey instanceof LegacyProtoKey)) {
-        throw new GeneralSecurityException("only LegacyProtoKey is currently supported");
-      }
-      LegacyProtoKey protoKey = (LegacyProtoKey) publicKey;
-      ProtoKeySerialization protoKeySerialization = protoKey.getSerialization(null);
+      ProtoKeySerialization protoKeySerialization =
+          MutableSerializationRegistry.globalInstance()
+              .serializeKey(entry.getKey(), ProtoKeySerialization.class, /* access= */ null);
 
       if ((protoKeySerialization.getOutputPrefixType() != OutputPrefixType.RAW)
           && (protoKeySerialization.getOutputPrefixType() != OutputPrefixType.TINK)) {
@@ -144,7 +140,10 @@ public final class JwkSetConverter {
               "unexpected alg value: " + getStringItem(jsonKey, "alg"));
       }
       builder.addEntry(
-          KeysetHandle.importKey(new LegacyProtoKey(keySerialization, null)).withRandomId());
+          KeysetHandle.importKey(
+                  MutableSerializationRegistry.globalInstance()
+                      .parseKeyWithLegacyFallback(keySerialization, null))
+              .withRandomId());
     }
     if (builder.size() <= 0) {
       throw new GeneralSecurityException("empty keyset");

@@ -16,6 +16,8 @@
 
 package com.google.crypto.tink.internal;
 
+import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
+
 import com.google.crypto.tink.Key;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.SecretKeyAccess;
@@ -34,8 +36,17 @@ import javax.annotation.Nullable;
  * should register such an object into a global, mutable registry.
  */
 public final class MutableSerializationRegistry {
+  private static MutableSerializationRegistry createGlobalInstance()
+      throws GeneralSecurityException {
+    MutableSerializationRegistry registry = new MutableSerializationRegistry();
+    registry.registerKeySerializer(
+        KeySerializer.create(
+            LegacyProtoKey::getSerialization, LegacyProtoKey.class, ProtoKeySerialization.class));
+    return registry;
+  }
+
   private static final MutableSerializationRegistry GLOBAL_INSTANCE =
-      new MutableSerializationRegistry();
+      exceptionIsBug(MutableSerializationRegistry::createGlobalInstance);
 
   public static MutableSerializationRegistry globalInstance() {
     return GLOBAL_INSTANCE;
@@ -137,23 +148,14 @@ public final class MutableSerializationRegistry {
    * types for which we did not yet register a parser; in this case we simply fall back to return a
    * LegacyProtoKey.
    *
-   * <p>This always requires SecretKeyAccess.
-   *
-   * @throws GeneralSecurityException if a parser is registered but parsing fails.
+   * @throws GeneralSecurityException if a parser is registered but parsing fails or required
+   *     SecretKeyAccess is missing
    */
   public Key parseKeyWithLegacyFallback(
-      ProtoKeySerialization protoKeySerialization, SecretKeyAccess access)
+      ProtoKeySerialization protoKeySerialization, @Nullable SecretKeyAccess access)
       throws GeneralSecurityException {
-    if (access == null) {
-      throw new NullPointerException("access cannot be null");
-    }
     if (!hasParserForKey(protoKeySerialization)) {
-      try {
-        return new LegacyProtoKey(protoKeySerialization, access);
-      } catch (GeneralSecurityException e2) {
-        // Cannot happen -- this only throws if we have no access.
-        throw new TinkBugException("Creating a LegacyProtoKey failed", e2);
-      }
+      return new LegacyProtoKey(protoKeySerialization, access);
     }
     return parseKey(protoKeySerialization, access);
   }

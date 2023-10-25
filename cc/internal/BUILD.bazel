@@ -762,6 +762,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -799,6 +800,7 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -924,7 +926,6 @@ cc_library(
         ":parser_index",
         ":serialization",
         ":serializer_index",
-        "//:insecure_secret_key_access",
         "//:key",
         "//:parameters",
         "//util:status",
@@ -932,6 +933,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -946,6 +948,7 @@ cc_test(
         ":serialization",
         ":serialization_registry",
         ":serialization_test_util",
+        "//:insecure_secret_key_access",
         "//:key",
         "//:parameters",
         "//:secret_key_access_token",
@@ -981,6 +984,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -1006,6 +1010,7 @@ cc_test(
         "//util:statusor",
         "//util:test_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1075,7 +1080,8 @@ cc_library(
     hdrs = ["configuration_impl.h"],
     include_prefix = "tink/internal",
     deps = [
-        ":registry_impl",
+        ":key_type_info_store",
+        ":keyset_wrapper_store",
         "//:configuration",
     ],
 )
@@ -1085,10 +1091,10 @@ cc_test(
     srcs = ["configuration_impl_test.cc"],
     deps = [
         ":configuration_impl",
-        ":registry_impl",
         "//:configuration",
         "//proto:aes_gcm_cc_proto",
         "//proto:rsa_ssa_pss_cc_proto",
+        "//subtle:random",
         "//util:test_matchers",
         "//util:test_util",
         "@com_google_googletest//:gtest_main",
