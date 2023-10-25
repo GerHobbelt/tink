@@ -22,8 +22,8 @@ import java.security.GeneralSecurityException;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Describes the parameters of a {@code JwtHmacKey}. */
-public class JwtHmacParameters extends JwtMacParameters {
+/** Describes the parameters of a {@code JwtEcdsaPrivateKey} or a {@code JwtEcdsaPublicKey}. */
+public final class JwtEcdsaParameters extends JwtSignatureParameters {
   /** Specifies how the "kid" header is handled. */
   @Immutable
   public static final class KidStrategy {
@@ -31,9 +31,10 @@ public class JwtHmacParameters extends JwtMacParameters {
      * The "kid" is the URL safe (RFC 4648 Section 5) base64-encoded big-endian key_id in the
      * keyset.
      *
-     * <p>In {@code computeMacAndEncode} Tink always adds the KID.
+     * <p>In {@code PublicKeySign#signAndEncode} Tink always adds the KID.
      *
-     * <p>In {@code verifyMacAndDecode} Tink checks that the kid is present and equal to this value.
+     * <p>In {@code PublicKeyVerify#verifyAndDecode} Tink checks that the kid is present and equal
+     * to this value.
      *
      * <p>This strategy is recommended by Tink.
      */
@@ -43,22 +44,22 @@ public class JwtHmacParameters extends JwtMacParameters {
     /**
      * The "kid" header is ignored.
      *
-     * <p>In {@code computeMacAndEncode} Tink does not write a "kid" header.
+     * <p>In {@code PublicKeySign#signAndEncode} Tink does not write a "kid" header.
      *
-     * <p>In {@code verifyMacAndDecode} Tink ignores the "kid" header.
+     * <p>In {@code PublicKeyVerify#verifyAndDecode} Tink ignores the "kid" header.
      */
     public static final KidStrategy IGNORED = new KidStrategy("IGNORED");
 
     /**
      * The "kid" is fixed. It can be obtained from {@code parameters.getCustomKid()}.
      *
-     * <p>In {@code computeMacAndEncode} Tink writes the "kid" header to the value given by {@code
-     * parameters.getCustomKid()}.
+     * <p>In {@code PublicKeySign#signAndEncode} Tink writes the "kid" header to the value given by
+     * {@code parameters.getCustomKid()}.
      *
-     * <p>In {@code verifyMacAndDecode} If the kid is present, it needs to match {@code
-     * parameters.getCustomKid()}. If the kid is absent, it will be accepted.
+     * <p>In {@code PublicKeyVerify#verifyAndDecode}, if the kid is present, it needs to match
+     * {@code parameters.getCustomKid()}. If the kid is absent, it will be accepted.
      *
-     * <p>Note: Tink does not allow to randomly generate new {@link JwtHmacKey} objects from
+     * <p>Note: Tink does not allow to randomly generate new {@link JwtEcdsaKey} objects from
      * parameters objects with {@code KidStrategy} equals to {@code CUSTOM}.
      */
     public static final KidStrategy CUSTOM = new KidStrategy("CUSTOM");
@@ -75,12 +76,15 @@ public class JwtHmacParameters extends JwtMacParameters {
     }
   }
 
-  /** The algorithm to be used for the mac computation. */
+  /** The algorithm to be used for the signature computation. */
   @Immutable
   public static final class Algorithm {
-    public static final Algorithm HS256 = new Algorithm("HS256");
-    public static final Algorithm HS384 = new Algorithm("HS384");
-    public static final Algorithm HS512 = new Algorithm("HS512");
+    /** ECDSA using P-256 and SHA-256 */
+    public static final Algorithm ES256 = new Algorithm("ES256");
+    /** ECDSA using P-384 and SHA-384 */
+    public static final Algorithm ES384 = new Algorithm("ES384");
+    /** ECDSA using P-521 and SHA-512 */
+    public static final Algorithm ES512 = new Algorithm("ES512");
 
     private final String name;
 
@@ -98,17 +102,10 @@ public class JwtHmacParameters extends JwtMacParameters {
     }
   }
 
-  /** Helps creating a {@code JwtHmacParameters} object. */
+  /** Helps creating a {@code JwtEcdsaParameters} object. */
   public static final class Builder {
-    Optional<Integer> keySizeBytes = Optional.empty();
     Optional<KidStrategy> kidStrategy = Optional.empty();
     Optional<Algorithm> algorithm = Optional.empty();
-
-    @CanIgnoreReturnValue
-    public Builder setKeySizeBytes(int keySizeBytes) {
-      this.keySizeBytes = Optional.of(keySizeBytes);
-      return this;
-    }
 
     @CanIgnoreReturnValue
     public Builder setKidStrategy(KidStrategy kidStrategy) {
@@ -122,20 +119,14 @@ public class JwtHmacParameters extends JwtMacParameters {
       return this;
     }
 
-    public JwtHmacParameters build() throws GeneralSecurityException {
-      if (!keySizeBytes.isPresent()) {
-        throw new GeneralSecurityException("Key Size must be set");
-      }
+    public JwtEcdsaParameters build() throws GeneralSecurityException {
       if (!algorithm.isPresent()) {
         throw new GeneralSecurityException("Algorithm must be set");
       }
       if (!kidStrategy.isPresent()) {
         throw new GeneralSecurityException("KidStrategy must be set");
       }
-      if (keySizeBytes.get() < 16) {
-        throw new GeneralSecurityException("Key size must be at least 16 bytes");
-      }
-      return new JwtHmacParameters(keySizeBytes.get(), kidStrategy.get(), algorithm.get());
+      return new JwtEcdsaParameters(kidStrategy.get(), algorithm.get());
     }
 
     private Builder() {}
@@ -145,19 +136,13 @@ public class JwtHmacParameters extends JwtMacParameters {
     return new Builder();
   }
 
-  private JwtHmacParameters(int keySizeBytes, KidStrategy kidStrategy, Algorithm algorithm) {
-    this.keySizeBytes = keySizeBytes;
+  private JwtEcdsaParameters(KidStrategy kidStrategy, Algorithm algorithm) {
     this.kidStrategy = kidStrategy;
     this.algorithm = algorithm;
   }
 
-  private final int keySizeBytes;
   private final KidStrategy kidStrategy;
   private final Algorithm algorithm;
-
-  public int getKeySizeBytes() {
-    return keySizeBytes;
-  }
 
   public KidStrategy getKidStrategy() {
     return kidStrategy;
@@ -174,34 +159,25 @@ public class JwtHmacParameters extends JwtMacParameters {
 
   @Override
   public boolean allowKidAbsent() {
-    return kidStrategy.equals(KidStrategy.CUSTOM)
-        || kidStrategy.equals(KidStrategy.IGNORED);
+    return kidStrategy.equals(KidStrategy.CUSTOM) || kidStrategy.equals(KidStrategy.IGNORED);
   }
 
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof JwtHmacParameters)) {
+    if (!(o instanceof JwtEcdsaParameters)) {
       return false;
     }
-    JwtHmacParameters that = (JwtHmacParameters) o;
-    return that.keySizeBytes == keySizeBytes
-        && that.kidStrategy.equals(kidStrategy)
-        && that.algorithm.equals(algorithm);
+    JwtEcdsaParameters that = (JwtEcdsaParameters) o;
+    return that.kidStrategy.equals(kidStrategy) && that.algorithm.equals(algorithm);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(JwtHmacParameters.class, keySizeBytes, kidStrategy, algorithm);
+    return Objects.hash(JwtEcdsaParameters.class, kidStrategy, algorithm);
   }
 
   @Override
   public String toString() {
-    return "JWT HMAC Parameters (kidStrategy: "
-        + kidStrategy
-        + ", Algorithm "
-        + algorithm
-        + ", and "
-        + keySizeBytes
-        + "-byte key)";
+    return "JWT ECDSA Parameters (kidStrategy: " + kidStrategy + ", Algorithm " + algorithm + ")";
   }
 }
