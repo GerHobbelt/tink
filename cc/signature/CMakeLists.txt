@@ -412,6 +412,79 @@ tink_cc_library(
     tink::core::private_key
 )
 
+tink_cc_library(
+  NAME ed25519_parameters
+  SRCS
+    ed25519_parameters.cc
+    ed25519_parameters.h
+  DEPS
+    tink::signature::signature_parameters
+    tink::util::statusor
+)
+
+tink_cc_library(
+  NAME ed25519_public_key
+  SRCS
+    ed25519_public_key.cc
+    ed25519_public_key.h
+  DEPS
+    tink::signature::ed25519_parameters
+    tink::signature::signature_public_key
+    absl::core_headers
+    absl::strings
+    absl::optional
+    tink::core::partial_key_access_token
+    tink::subtle::subtle_util
+    tink::util::status
+    tink::util::statusor
+)
+
+tink_cc_library(
+  NAME ed25519_private_key
+  SRCS
+    ed25519_private_key.cc
+    ed25519_private_key.h
+  DEPS
+    tink::signature::ed25519_public_key
+    tink::signature::signature_private_key
+    crypto
+    tink::core::insecure_secret_key_access
+    tink::core::partial_key_access_token
+    tink::core::restricted_data
+    tink::internal::ec_util
+    tink::util::secret_data
+    tink::util::statusor
+)
+
+tink_cc_library(
+  NAME ed25519_proto_serialization
+  SRCS
+    ed25519_proto_serialization.cc
+    ed25519_proto_serialization.h
+  DEPS
+    tink::signature::ed25519_parameters
+    tink::signature::ed25519_private_key
+    tink::signature::ed25519_public_key
+    absl::status
+    absl::strings
+    absl::optional
+    tink::core::insecure_secret_key_access
+    tink::core::partial_key_access
+    tink::core::restricted_data
+    tink::core::secret_key_access_token
+    tink::internal::key_parser
+    tink::internal::key_serializer
+    tink::internal::mutable_serialization_registry
+    tink::internal::parameters_parser
+    tink::internal::parameters_serializer
+    tink::internal::proto_key_serialization
+    tink::internal::proto_parameters_serialization
+    tink::util::status
+    tink::util::statusor
+    tink::proto::ed25519_cc_proto
+    tink::proto::tink_cc_proto
+)
+
 # tests
 
 tink_cc_test(
@@ -766,4 +839,73 @@ tink_cc_test(
     gmock
     absl::status
     tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME ed25519_parameters_test
+  SRCS
+    ed25519_parameters_test.cc
+  DEPS
+    tink::signature::ed25519_parameters
+    gmock
+    tink::util::statusor
+    tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME ed25519_public_key_test
+  SRCS
+    ed25519_public_key_test.cc
+  DEPS
+    tink::signature::ed25519_public_key
+    gmock
+    tink::core::partial_key_access
+    tink::subtle::random
+    tink::util::statusor
+    tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME ed25519_private_key_test
+  SRCS
+    ed25519_private_key_test.cc
+  DEPS
+    tink::signature::ed25519_private_key
+    tink::signature::ed25519_public_key
+    gmock
+    tink::core::insecure_secret_key_access
+    tink::core::partial_key_access
+    tink::internal::ec_util
+    tink::subtle::random
+    tink::util::statusor
+    tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME ed25519_proto_serialization_test
+  SRCS
+    ed25519_proto_serialization_test.cc
+  DEPS
+    tink::signature::ed25519_parameters
+    tink::signature::ed25519_private_key
+    tink::signature::ed25519_proto_serialization
+    tink::signature::ed25519_public_key
+    gmock
+    absl::status
+    absl::optional
+    tink::core::insecure_secret_key_access
+    tink::core::key
+    tink::core::parameters
+    tink::core::partial_key_access
+    tink::core::restricted_data
+    tink::internal::ec_util
+    tink::internal::mutable_serialization_registry
+    tink::internal::proto_key_serialization
+    tink::internal::proto_parameters_serialization
+    tink::internal::serialization
+    tink::subtle::random
+    tink::util::statusor
+    tink::util::test_matchers
+    tink::proto::ed25519_cc_proto
+    tink::proto::tink_cc_proto
 )
