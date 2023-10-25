@@ -18,6 +18,7 @@ package gcpkms_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 
 	"flag"
 	// context is used to cancel outstanding requests
+	"google.golang.org/api/option"
 	"github.com/google/tink/go/aead"
 	"github.com/google/tink/go/core/registry"
 	"github.com/google/tink/go/integration/gcpkms"
@@ -38,7 +40,7 @@ const (
 )
 
 var (
-	credFile = "google3/third_party/tink/testdata/gcp/credential.json"
+	credFile = "tink_go/testdata/gcp/credential.json"
 )
 
 func init() {
@@ -54,10 +56,10 @@ func setupKMS(t *testing.T) {
 	if !ok {
 		t.Skip("TEST_SRCDIR not set")
 	}
-
-	g, err := gcpkms.NewClientWithCredentials(keyURI, filepath.Join(srcDir, credFile))
+	ctx := context.Background()
+	g, err := gcpkms.NewClientWithOptions(ctx, keyURI, option.WithCredentialsFile(filepath.Join(srcDir, credFile)))
 	if err != nil {
-		t.Errorf("error setting up gcp client: %v", err)
+		t.Fatalf("error setting up GCP client: %v", err)
 	}
 	registry.RegisterKMSClient(g)
 }

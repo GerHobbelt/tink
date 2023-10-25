@@ -199,6 +199,7 @@ tink_cc_library(
     tink::subtle::random
     tink::util::constants
     tink::util::enums
+    tink::util::input_stream_util
     tink::util::secret_data
     tink::util::status
     tink::util::statusor
@@ -305,6 +306,34 @@ tink_cc_library(
     tink::core::aead
     tink::util::statusor
   TESTONLY
+)
+
+tink_cc_library(
+  NAME failing_aead
+  SRCS
+    failing_aead.cc
+    failing_aead.h
+  DEPS
+    absl::strings
+    tink::core::aead
+  TESTONLY
+)
+
+tink_cc_library(
+  NAME aead_key
+  SRCS
+    aead_key.h
+  DEPS
+    tink::aead::aead_parameters
+    tink::core::key
+)
+
+tink_cc_library(
+  NAME aead_parameters
+  SRCS
+    aead_parameters.h
+  DEPS
+    tink::core::parameters
 )
 
 # tests
@@ -488,11 +517,11 @@ tink_cc_test(
     gmock
     absl::status
     tink::core::aead
-    tink::core::mac
     tink::subtle::subtle
     tink::subtle::aead_test_util
     tink::subtle::aes_ctr_boringssl
     tink::util::enums
+    tink::util::istream_input_stream
     tink::util::secret_data
     tink::util::status
     tink::util::statusor
@@ -613,17 +642,6 @@ tink_cc_test(
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::tink_cc_proto
-)
-
-tink_cc_library(
-  NAME failing_aead
-  SRCS
-    failing_aead.cc
-    failing_aead.h
-  DEPS
-    absl::strings
-    tink::core::aead
-  TESTONLY
 )
 
 tink_cc_test(
