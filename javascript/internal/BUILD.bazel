@@ -139,7 +139,7 @@ ts_library(
         ":util",
         "//aead/internal",
         "//exception",
-        "//subtle",
+        "//subtle:random",
     ],
 )
 
@@ -188,7 +188,7 @@ ts_library(
     srcs = [
         "proto_shims.ts",
     ],
-    deps = ["//subtle"],
+    deps = ["//subtle:bytes"],
 )
 
 ts_library(
@@ -215,7 +215,8 @@ ts_library(
     deps = [
         ":proto",
         "//exception",
-        "//subtle",
+        "//subtle:bytes",
+        "//subtle:elliptic_curves",
     ],
 )
 
@@ -250,8 +251,13 @@ ts_library(
         "//aead",
         "//exception",
         "//hybrid",
+        "//hybrid:hybrid_config",
+        "//hybrid:hybrid_key_templates",
         "//mac",
-        "//subtle",
+        "//subtle:bytes",
+        "//subtle:elliptic_curves",
+        "//subtle:encrypt_then_authenticate",
+        "//subtle:random",
         "//testing/internal",
         "@npm//@types/jasmine",
     ],

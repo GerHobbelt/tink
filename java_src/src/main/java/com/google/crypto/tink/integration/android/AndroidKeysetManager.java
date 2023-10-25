@@ -132,7 +132,7 @@ public final class AndroidKeysetManager {
   private KeysetManager keysetManager;
 
   private AndroidKeysetManager(Builder builder) {
-    writer = builder.writer;
+    writer = new SharedPrefKeysetWriter(builder.context, builder.keysetName, builder.prefFileName);
     masterKey = builder.masterKey;
     keysetManager = builder.keysetManager;
   }
@@ -143,8 +143,10 @@ public final class AndroidKeysetManager {
    * <p>This class is thread-safe.
    */
   public static final class Builder {
-    private KeysetReader reader = null;
-    private KeysetWriter writer = null;
+    private Context context = null;
+    private String keysetName = null;
+    private String prefFileName = null;
+
     private String masterKeyUri = null;
     private Aead masterKey = null;
     private boolean useKeystore = true;
@@ -166,8 +168,10 @@ public final class AndroidKeysetManager {
       if (keysetName == null) {
         throw new IllegalArgumentException("need a keyset name");
       }
-      reader = new SharedPrefKeysetReader(context, keysetName, prefFileName);
-      writer = new SharedPrefKeysetWriter(context, keysetName, prefFileName);
+      this.context = context;
+      this.keysetName = keysetName;
+      this.prefFileName = prefFileName;
+
       return this;
     }
 
@@ -244,6 +248,9 @@ public final class AndroidKeysetManager {
      * @throws GeneralSecurityException If cannot read an existing keyset or generate a new one.
      */
     public synchronized AndroidKeysetManager build() throws GeneralSecurityException, IOException {
+      if (keysetName == null) {
+        throw new IllegalArgumentException("keysetName cannot be null");
+      }
       // readOrGenerateNewMasterKey() and readOrGenerateNewKeyset() involve shared pref filesystem
       // operations. To control access to this global state in multi-threaded contexts we need to
       // ensure mutual exclusion of these functions.
@@ -271,15 +278,13 @@ public final class AndroidKeysetManager {
         client = new AndroidKeystoreKmsClient();
       }
 
-      boolean existed = client.hasKey(masterKeyUri);
-      if (!existed) {
-        try {
-          // Note that this function does not use the keyStore instance set with withKeyStore.
-          AndroidKeystoreKmsClient.generateNewAesGcmKeyWithoutExistenceCheck(masterKeyUri);
-        } catch (GeneralSecurityException | ProviderException ex) {
-          Log.w(TAG, "cannot use Android Keystore, it'll be disabled", ex);
-          return null;
-        }
+      boolean generated;
+      try {
+        // Note that this function does not use the keyStore instance set with withKeyStore.
+        generated = AndroidKeystoreKmsClient.generateKeyIfNotExist(masterKeyUri);
+      } catch (GeneralSecurityException | ProviderException ex) {
+        Log.w(TAG, "cannot use Android Keystore, it'll be disabled", ex);
+        return null;
       }
 
       try {
@@ -287,9 +292,10 @@ public final class AndroidKeysetManager {
       } catch (GeneralSecurityException | ProviderException ex) {
         // Throw the exception if the key exists but is unusable. We can't recover by generating a
         // new key because there might be existing encrypted data under the unusable key.
-        // Users can provide a master key that is stored in StrongBox, which may throw a
-        // ProviderException if there's any problem with it.
-        if (existed) {
+        // Users can provide a master key that is stored in StrongBox (see
+        // https://developer.android.com/about/versions/pie/android-9.0#hardware-security-module),
+        // which may throw a ProviderException if there's any problem with it.
+        if (!generated) {
           throw new KeyStoreException(
               String.format("the master key %s exists but is unusable", masterKeyUri), ex);
         }
@@ -319,6 +325,7 @@ public final class AndroidKeysetManager {
       KeysetManager manager = KeysetManager.withEmptyKeyset().add(keyTemplate);
       int keyId = manager.getKeysetHandle().getKeysetInfo().getKeyInfo(0).getKeyId();
       manager = manager.setPrimary(keyId);
+      KeysetWriter writer = new SharedPrefKeysetWriter(context, keysetName, prefFileName);
       if (masterKey != null) {
         manager.getKeysetHandle().write(writer, masterKey);
       } else {
@@ -327,12 +334,14 @@ public final class AndroidKeysetManager {
       return manager;
     }
 
+    @SuppressWarnings("UnusedException")
     private KeysetManager read() throws GeneralSecurityException, IOException {
+      KeysetReader reader = new SharedPrefKeysetReader(context, keysetName, prefFileName);
       if (masterKey != null) {
         try {
           return KeysetManager.withKeysetHandle(KeysetHandle.read(reader, masterKey));
         } catch (InvalidProtocolBufferException | GeneralSecurityException ex) {
-          // Swallow the exception and attempt to read the keyset in cleartext.
+          // Attempt to read the keyset in cleartext.
           // This edge case may happen when either
           //   - the keyset was generated on a pre M phone which is then upgraded to M or newer, or
           //   - the keyset was generated with Keystore being disabled, then Keystore is enabled.
@@ -341,9 +350,16 @@ public final class AndroidKeysetManager {
           // cleartext value that it controls. This does not introduce new security risks because to
           // overwrite the encrypted keyset in private preferences of an app, said adversaries must
           // have the same privilege as the app, thus they can call Android Keystore to read or
-          // write
-          // the encrypted keyset in the first place.
+          // write the encrypted keyset in the first place.
           Log.w(TAG, "cannot decrypt keyset: ", ex);
+          try {
+            return KeysetManager.withKeysetHandle(CleartextKeysetHandle.read(reader));
+          } catch (InvalidProtocolBufferException ex2) {
+            // Raising a InvalidProtocolBufferException error here would be confusing, because
+            // parsing probably failed because the keyset was encrypted but we were not able to
+            // decrypt it. It is better to throw the error above.
+            throw ex;
+          }
         }
       }
 
