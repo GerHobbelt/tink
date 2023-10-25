@@ -17,25 +17,27 @@
 package com.google.crypto.tink.integration.android;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import androidx.annotation.ChecksSdkIntAtLeast;
 import androidx.annotation.Nullable;
 import com.google.crypto.tink.Aead;
+import com.google.crypto.tink.BinaryKeysetReader;
 import com.google.crypto.tink.CleartextKeysetHandle;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.KeysetManager;
-import com.google.crypto.tink.KeysetReader;
 import com.google.crypto.tink.KeysetWriter;
 import com.google.crypto.tink.proto.OutputPrefixType;
+import com.google.crypto.tink.subtle.Hex;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.InlineMe;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.io.FileNotFoundException;
+import java.io.CharConversionException;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.ProviderException;
 import javax.annotation.concurrent.GuardedBy;
@@ -56,7 +58,7 @@ import javax.annotation.concurrent.GuardedBy;
  * // later use.
  * AndroidKeysetManager manager = AndroidKeysetManager.Builder()
  *    .withSharedPref(getApplicationContext(), "my_keyset_name", "my_pref_file_name")
- *    .withKeyTemplate(AesGcmHkfStreamingKeyManager.aes128GcmHkdf4KBTemplate())
+ *    .withKeyTemplate(KeyTemplates.get("AES128_GCM_HKDF_4KB"))
  *    .build();
  * StreamingAead streamingAead = manager.getKeysetHandle().getPrimitive(StreamingAead.class);
  * }</pre>
@@ -76,13 +78,13 @@ import javax.annotation.concurrent.GuardedBy;
  *       my_pref_file_name} shared preferences file.
  * </ul>
  *
- * <h3>Key rotation</h3>
+ * <h3>Adding a new key</h3>
  *
  * <p>The resulting manager supports all operations supported by {@link KeysetManager}. For example
- * to rotate the keyset, you can do:
+ * to add a key to the keyset, you can do:
  *
  * <pre>{@code
- * manager.rotate(AesGcmHkfStreamingKeyManager.aes128GcmHkdf1MBTemplate());
+ * manager.add(KeyTemplates.get("AES128_GCM_HKDF_4KB"));
  * }</pre>
  *
  * <p>All operations that manipulate the keyset would automatically persist the new keyset to
@@ -126,14 +128,14 @@ public final class AndroidKeysetManager {
 
   private static final String TAG = AndroidKeysetManager.class.getSimpleName();
   private final KeysetWriter writer;
-  private final Aead masterKey;
+  private final Aead masterAead;
 
   @GuardedBy("this")
   private KeysetManager keysetManager;
 
   private AndroidKeysetManager(Builder builder) {
     writer = new SharedPrefKeysetWriter(builder.context, builder.keysetName, builder.prefFileName);
-    masterKey = builder.masterKey;
+    masterAead = builder.masterAead;
     keysetManager = builder.keysetManager;
   }
 
@@ -148,10 +150,9 @@ public final class AndroidKeysetManager {
     private String prefFileName = null;
 
     private String masterKeyUri = null;
-    private Aead masterKey = null;
+    private Aead masterAead = null;
     private boolean useKeystore = true;
     private KeyTemplate keyTemplate = null;
-    private KeyStore keyStore = null;
 
     @GuardedBy("this")
     private KeysetManager keysetManager;
@@ -233,11 +234,39 @@ public final class AndroidKeysetManager {
       return this;
     }
 
-    /** This is for testing only */
-    @CanIgnoreReturnValue
-    Builder withKeyStore(KeyStore val) {
-      this.keyStore = val;
-      return this;
+    /** Returns the serialized keyset if it exist or null. */
+    @Nullable
+    @SuppressWarnings("UnusedException")
+    private static byte[] readKeysetFromPrefs(
+        Context context, String keysetName, String prefFileName) throws IOException {
+      if (keysetName == null) {
+        throw new IllegalArgumentException("keysetName cannot be null");
+      }
+      Context appContext = context.getApplicationContext();
+      SharedPreferences sharedPreferences;
+      if (prefFileName == null) {
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(appContext);
+      } else {
+        sharedPreferences = appContext.getSharedPreferences(prefFileName, Context.MODE_PRIVATE);
+      }
+      try {
+        String keysetHex = sharedPreferences.getString(keysetName, /* defValue= */ null);
+        if (keysetHex == null) {
+          return null;
+        }
+        return Hex.decode(keysetHex);
+      } catch (ClassCastException | IllegalArgumentException ex) {
+        // The original exception is swallowed to prevent leaked key material.
+        throw new CharConversionException(
+            String.format(
+                "can't read keyset; the pref value %s is not a valid hex string", keysetName));
+      }
+    }
+
+    private KeysetManager readKeysetInCleartext(byte[] serializedKeyset)
+        throws GeneralSecurityException, IOException {
+      return KeysetManager.withKeysetHandle(
+          CleartextKeysetHandle.read(BinaryKeysetReader.withBytes(serializedKeyset)));
     }
 
     /**
@@ -251,15 +280,23 @@ public final class AndroidKeysetManager {
       if (keysetName == null) {
         throw new IllegalArgumentException("keysetName cannot be null");
       }
-      // readOrGenerateNewMasterKey() and readOrGenerateNewKeyset() involve shared pref filesystem
-      // operations. To control access to this global state in multi-threaded contexts we need to
-      // ensure mutual exclusion of these functions.
+      // readKeysetFromPrefs(), readOrGenerateNewMasterKey() and generateNewKeyset() involve shared
+      // pref filesystem operations. To control access to this global state in multi-threaded
+      // contexts we need to ensure mutual exclusion of these functions.
       synchronized (lock) {
-        if (masterKeyUri != null) {
-          masterKey = readOrGenerateNewMasterKey();
+        byte[] serializedKeyset = readKeysetFromPrefs(context, keysetName, prefFileName);
+        if (serializedKeyset == null) {
+          if (masterKeyUri != null) {
+            masterAead = readOrGenerateNewMasterKey();
+          }
+          this.keysetManager = generateKeysetAndWriteToPrefs();
+        } else {
+          if (masterKeyUri == null || !isAtLeastM()) {
+            this.keysetManager = readKeysetInCleartext(serializedKeyset);
+          } else {
+            this.keysetManager = readMasterkeyDecryptAndParseKeyset(serializedKeyset);
+          }
         }
-        this.keysetManager = readOrGenerateNewKeyset();
-
         return new AndroidKeysetManager(this);
       }
     }
@@ -271,12 +308,7 @@ public final class AndroidKeysetManager {
         return null;
       }
 
-      AndroidKeystoreKmsClient client;
-      if (keyStore != null) {
-        client = new AndroidKeystoreKmsClient.Builder().setKeyStore(keyStore).build();
-      } else {
-        client = new AndroidKeystoreKmsClient();
-      }
+      AndroidKeystoreKmsClient client = new AndroidKeystoreKmsClient();
 
       boolean generated;
       try {
@@ -307,17 +339,8 @@ public final class AndroidKeysetManager {
       return null;
     }
 
-    private KeysetManager readOrGenerateNewKeyset() throws GeneralSecurityException, IOException {
-      try {
-        return read();
-      } catch (FileNotFoundException ex) {
-        // Not found, handle below.
-        if (Log.isLoggable(TAG, Log.VERBOSE)) {
-          Log.v(
-              TAG, String.format("keyset not found, will generate a new one. %s", ex.getMessage()));
-        }
-      }
-
+    private KeysetManager generateKeysetAndWriteToPrefs()
+        throws GeneralSecurityException, IOException {
       if (keyTemplate == null) {
         throw new GeneralSecurityException("cannot read or generate keyset");
       }
@@ -326,8 +349,8 @@ public final class AndroidKeysetManager {
       int keyId = manager.getKeysetHandle().getKeysetInfo().getKeyInfo(0).getKeyId();
       manager = manager.setPrimary(keyId);
       KeysetWriter writer = new SharedPrefKeysetWriter(context, keysetName, prefFileName);
-      if (masterKey != null) {
-        manager.getKeysetHandle().write(writer, masterKey);
+      if (masterAead != null) {
+        manager.getKeysetHandle().write(writer, masterAead);
       } else {
         CleartextKeysetHandle.write(manager.getKeysetHandle(), writer);
       }
@@ -335,35 +358,45 @@ public final class AndroidKeysetManager {
     }
 
     @SuppressWarnings("UnusedException")
-    private KeysetManager read() throws GeneralSecurityException, IOException {
-      KeysetReader reader = new SharedPrefKeysetReader(context, keysetName, prefFileName);
-      if (masterKey != null) {
+    private KeysetManager readMasterkeyDecryptAndParseKeyset(byte[] serializedKeyset)
+        throws GeneralSecurityException, IOException {
+      // We expect that the keyset is encrypted. Try to get masterAead.
+      try {
+        masterAead = new AndroidKeystoreKmsClient().getAead(masterKeyUri);
+      } catch (GeneralSecurityException | ProviderException keystoreException) {
+        // Getting masterAead failed. Attempt to read the keyset in cleartext.
         try {
-          return KeysetManager.withKeysetHandle(KeysetHandle.read(reader, masterKey));
-        } catch (InvalidProtocolBufferException | GeneralSecurityException ex) {
-          // Attempt to read the keyset in cleartext.
-          // This edge case may happen when either
-          //   - the keyset was generated on a pre M phone which is then upgraded to M or newer, or
-          //   - the keyset was generated with Keystore being disabled, then Keystore is enabled.
-          // By ignoring the security failure here, an adversary with write access to private
-          // preferences can replace an encrypted keyset (that it cannot read or write) with a
-          // cleartext value that it controls. This does not introduce new security risks because to
-          // overwrite the encrypted keyset in private preferences of an app, said adversaries must
-          // have the same privilege as the app, thus they can call Android Keystore to read or
-          // write the encrypted keyset in the first place.
-          Log.w(TAG, "cannot decrypt keyset: ", ex);
-          try {
-            return KeysetManager.withKeysetHandle(CleartextKeysetHandle.read(reader));
-          } catch (InvalidProtocolBufferException ex2) {
-            // Raising a InvalidProtocolBufferException error here would be confusing, because
-            // parsing probably failed because the keyset was encrypted but we were not able to
-            // decrypt it. It is better to throw the error above.
-            throw ex;
-          }
+          KeysetManager manager = readKeysetInCleartext(serializedKeyset);
+          Log.w(TAG, "cannot use Android Keystore, it'll be disabled", keystoreException);
+          return manager;
+        } catch (IOException unused) {
+          // Keyset is encrypted, throw error about master key encryption
+          throw keystoreException;
         }
       }
-
-      return KeysetManager.withKeysetHandle(CleartextKeysetHandle.read(reader));
+      // Got masterAead successfully.
+      try {
+        // Decrypt and parse the keyset using masterAead.
+        return KeysetManager.withKeysetHandle(
+            KeysetHandle.read(BinaryKeysetReader.withBytes(serializedKeyset), masterAead));
+      } catch (IOException | GeneralSecurityException ex) {
+        // Attempt to read the keyset in cleartext.
+        // This edge case may happen when either
+        //   - the keyset was generated on a pre M phone which was upgraded to M or newer, or
+        //   - the keyset was generated with Keystore being disabled, then Keystore is enabled.
+        // By ignoring the security failure here, an adversary with write access to private
+        // preferences can replace an encrypted keyset (that it cannot read or write) with a
+        // cleartext value that it controls. This does not introduce new security risks because to
+        // overwrite the encrypted keyset in private preferences of an app, said adversaries
+        // must have the same privilege as the app, thus they can call Android Keystore to read or
+        // write the encrypted keyset in the first place.
+        try {
+          return readKeysetInCleartext(serializedKeyset);
+        } catch (IOException unused) {
+          // Parsing failed because the keyset is encrypted but we were not able to decrypt it.
+          throw ex;
+        }
+      }
     }
   }
 
@@ -505,7 +538,7 @@ public final class AndroidKeysetManager {
   private void write(KeysetManager manager) throws GeneralSecurityException {
     try {
       if (shouldUseKeystore()) {
-        manager.getKeysetHandle().write(writer, masterKey);
+        manager.getKeysetHandle().write(writer, masterAead);
       } else {
         CleartextKeysetHandle.write(manager.getKeysetHandle(), writer);
       }
@@ -516,7 +549,7 @@ public final class AndroidKeysetManager {
 
   @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.M)
   private boolean shouldUseKeystore() {
-    return masterKey != null && isAtLeastM();
+    return masterAead != null && isAtLeastM();
   }
 
   private static KeyTemplate.OutputPrefixType fromProto(OutputPrefixType outputPrefixType) {
