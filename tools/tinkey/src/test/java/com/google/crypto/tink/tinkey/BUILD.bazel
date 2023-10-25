@@ -61,6 +61,30 @@ java_test(
     name = "AddKeyCommandTest",
     size = "small",
     srcs = ["AddKeyCommandTest.java"],
+    runtime_deps = [
+        "//tinkey/src/main/java/com/google/crypto/tink/tinkey:tinkey_test_kms_client",
+    ],
+    deps = [
+        "//tinkey/src/main/java/com/google/crypto/tink/tinkey",
+        "//tinkey/src/main/java/com/google/crypto/tink/tinkey:tinkey_test_kms_client",
+        "@maven//:com_google_truth_truth",
+        "@maven//:junit_junit",
+        "@tink_java//src/main/java/com/google/crypto/tink:aead",
+        "@tink_java//src/main/java/com/google/crypto/tink:insecure_secret_key_access",
+        "@tink_java//src/main/java/com/google/crypto/tink:registry_cluster",
+        "@tink_java//src/main/java/com/google/crypto/tink:tink_json_proto_keyset_format",
+        "@tink_java//src/main/java/com/google/crypto/tink:tink_proto_keyset_format",
+        "@tink_java//src/main/java/com/google/crypto/tink/aead:aead_config",
+        "@tink_java//src/main/java/com/google/crypto/tink/aead:predefined_aead_parameters",
+        "@tink_java//src/main/java/com/google/crypto/tink/mac:mac_config",
+        "@tink_java//src/main/java/com/google/crypto/tink/mac:predefined_mac_parameters",
+    ],
+)
+
+java_test(
+    name = "RotateKeysetCommandTest",
+    size = "small",
+    srcs = ["RotateKeysetCommandTest.java"],
     data = ["//testdata/gcp:credentials"],
     tags = [
         "manual",
@@ -84,25 +108,33 @@ java_test(
 )
 
 java_test(
-    name = "RotateKeysetCommandTest",
+    name = "TinkeyTestKmsClientTest",
     size = "small",
-    srcs = ["RotateKeysetCommandTest.java"],
-    data = ["//testdata/gcp:credentials"],
-    tags = [
-        "manual",
-        "no_rbe",
-        "requires-network",
+    srcs = ["TinkeyTestKmsClientTest.java"],
+    runtime_deps = [
+        "//tinkey/src/main/java/com/google/crypto/tink/tinkey:tinkey_test_kms_client",
     ],
     deps = [
-        "//tinkey/src/main/java/com/google/crypto/tink/tinkey:rotate_keyset_command",
-        "//tinkey/src/main/java/com/google/crypto/tink/tinkey:tinkey_util",
+        "//tinkey/src/main/java/com/google/crypto/tink/tinkey:tinkey_test_kms_client",
         "@maven//:com_google_truth_truth",
         "@maven//:junit_junit",
-        "@tink_java//proto:tink_java_proto",
-        "@tink_java//src/main/java/com/google/crypto/tink:key_template",
-        "@tink_java//src/main/java/com/google/crypto/tink:key_templates",
-        "@tink_java//src/main/java/com/google/crypto/tink:keyset_reader",
-        "@tink_java//src/main/java/com/google/crypto/tink/mac:mac_config",
-        "@tink_java//src/main/java/com/google/crypto/tink/testing:test_util",
+        "@tink_java//src/main/java/com/google/crypto/tink:aead",
+        "@tink_java//src/main/java/com/google/crypto/tink:kms_client",
+        "@tink_java//src/main/java/com/google/crypto/tink:kms_clients",
+        "@tink_java//src/main/java/com/google/crypto/tink:registry_cluster",
+        "@tink_java//src/main/java/com/google/crypto/tink/aead:aead_config",
+        "@tink_java//src/main/java/com/google/crypto/tink/aead:predefined_aead_parameters",
+    ],
+)
+
+java_test(
+    name = "KmsClientsFactoryTest",
+    size = "small",
+    srcs = ["KmsClientsFactoryTest.java"],
+    deps = [
+        "@maven//:com_google_truth_truth",
+        "@maven//:junit_junit",
+        "//tinkey/src/main/java/com/google/crypto/tink/tinkey:kms_clients_factory",
+        "//tinkey/src/main/java/com/google/crypto/tink/tinkey:tinkey_test_kms_client",
     ],
 )

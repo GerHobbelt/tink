@@ -25,6 +25,11 @@ import com.google.crypto.tink.JsonKeysetReader;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.TinkJsonProtoKeysetFormat;
+import com.google.crypto.tink.TinkProtoKeysetFormat;
+import com.google.crypto.tink.proto.KeyData;
+import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
+import com.google.crypto.tink.proto.KeyStatusType;
+import com.google.crypto.tink.proto.Keyset;
 import com.google.crypto.tink.proto.KeysetInfo;
 import com.google.crypto.tink.proto.OutputPrefixType;
 import com.google.crypto.tink.testing.TestUtil;
@@ -32,6 +37,7 @@ import com.google.crypto.tink.tinkkey.KeyAccess;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.protobuf.ByteString;
 import java.security.GeneralSecurityException;
 import java.util.HashSet;
 import org.junit.Before;
@@ -540,7 +546,7 @@ public final class JwkSetConverterTest {
   @Test
   public void primaryKeyIdMissing_fromPublicKeysetHandleSuccess() throws Exception {
     String keyset = ES256_KEYSET.replace("\"primaryKeyId\":282600252,", "");
-    assertEqualJwkSets(convertToJwkSet(keyset), ES256_JWK_SET);
+    assertThrows(GeneralSecurityException.class, () -> convertToJwkSet(keyset));
   }
 
   @Test
@@ -588,6 +594,28 @@ public final class JwkSetConverterTest {
   public void crunchyRsaSsaPssKeysets_fromPublicKeysetHandleFails() throws Exception {
     String keyset = PS256_KEYSET.replace("RAW", "CRUNCHY");
     assertThrows(GeneralSecurityException.class, () -> convertToJwkSet(keyset));
+  }
+
+  @Test
+  public void fromPublicKeysetHandle_throwsOnInvalidKeysetHandle() throws Exception {
+    Keyset keyset =
+        Keyset.newBuilder()
+            .setPrimaryKeyId(1)
+            .addKey(
+                Keyset.Key.newBuilder()
+                    .setKeyId(1)
+                    // Keysets with unknown status are not parsed properly and will throw unchecked
+                    // at getAt()
+                    .setStatus(KeyStatusType.UNKNOWN_STATUS)
+                    .setKeyData(
+                        KeyData.newBuilder()
+                            .setTypeUrl("somenonexistenttypeurl")
+                            .setKeyMaterialType(KeyMaterialType.ASYMMETRIC_PUBLIC)
+                            .setValue(ByteString.EMPTY)))
+            .build();
+    KeysetHandle handle = TinkProtoKeysetFormat.parseKeysetWithoutSecret(keyset.toByteArray());
+    assertThrows(
+        GeneralSecurityException.class, () -> JwkSetConverter.fromPublicKeysetHandle(handle));
   }
 
   @Test
@@ -690,25 +718,7 @@ public final class JwkSetConverterTest {
   }
 
   @Test
-  public void ecdsaWithSmallX_getPrimitiveFails() throws Exception {
-    String jwksString =
-        "{"
-            + "\"keys\":[{"
-            + "\"kty\":\"EC\","
-            + "\"crv\":\"P-256\","
-            + "\"x\":\"AAAwOQ\","
-            + "\"y\":\"b22m_Y4sT-jUJSxBVqjrW_DxWyBLopxYHTuFVfx70ZI\","
-            + "\"use\":\"sig\","
-            + "\"alg\":\"ES256\","
-            + "\"key_ops\":[\"verify\"]"
-            + "}]}";
-    KeysetHandle handle = JwkSetConverter.toPublicKeysetHandle(jwksString);
-    assertThrows(
-        GeneralSecurityException.class, () -> handle.getPrimitive(JwtPublicKeyVerify.class));
-  }
-
-  @Test
-  public void ecdsaWithSmallY_getPrimitiveFails() throws Exception {
+  public void ecdsa_pointNotOnCurve_getPrimitiveFails() throws Exception {
     String jwksString =
         "{"
             + "\"keys\":[{"
@@ -720,9 +730,8 @@ public final class JwkSetConverterTest {
             + "\"alg\":\"ES256\","
             + "\"key_ops\":[\"verify\"]"
             + "}]}";
-    KeysetHandle handle = JwkSetConverter.toPublicKeysetHandle(jwksString);
     assertThrows(
-        GeneralSecurityException.class, () -> handle.getPrimitive(JwtPublicKeyVerify.class));
+        GeneralSecurityException.class, () -> JwkSetConverter.toPublicKeysetHandle(jwksString));
   }
 
   @Test
