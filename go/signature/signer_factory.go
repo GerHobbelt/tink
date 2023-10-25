@@ -95,6 +95,7 @@ func (s *wrappedSigner) Sign(data []byte) ([]byte, error) {
 
 	var signedData []byte
 	if primary.PrefixType == tinkpb.OutputPrefixType_LEGACY {
+		signedData = make([]byte, 0, len(data)+1)
 		signedData = append(signedData, data...)
 		signedData = append(signedData, byte(0))
 	} else {
@@ -107,5 +108,11 @@ func (s *wrappedSigner) Sign(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	s.logger.Log(primary.KeyID, len(data))
-	return append([]byte(primary.Prefix), signature...), nil
+	if len(primary.Prefix) == 0 {
+		return signature, nil
+	}
+	output := make([]byte, 0, len(primary.Prefix)+len(signature))
+	output = append(output, primary.Prefix...)
+	output = append(output, signature...)
+	return output, nil
 }
