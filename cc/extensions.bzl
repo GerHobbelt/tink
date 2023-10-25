@@ -16,32 +16,6 @@
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-def _abseil_impl(_ctx):
-    http_archive(
-        name = "com_google_absl",
-        strip_prefix = "abseil-cpp-20230125.0",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230125.0.zip",
-        sha256 = "70a2e30f715a7adcf5b7fcd2fcef7b624204b8e32ede8a23fd35ff5bd7d513b0",
-    )
-
-abseil_extension = module_extension(
-    implementation = _abseil_impl,
-)
-
-def _rapidjson_impl(_ctx):
-    # Release from 2016-08-25 (still the latest release as of 2022-05-05).
-    http_archive(
-        name = "rapidjson",
-        url = "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz",
-        sha256 = "bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e",
-        strip_prefix = "rapidjson-1.1.0",
-        build_file = "third_party/rapidjson.BUILD.bazel",
-    )
-
-rapidjson_extension = module_extension(
-    implementation = _rapidjson_impl,
-)
-
 def _wycheproof_impl(_ctx):
     # Commit from 2019-12-17.
     http_archive(
