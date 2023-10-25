@@ -19,6 +19,10 @@
 #import <Foundation/Foundation.h>
 #import <XCTest/XCTest.h>
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #import "TINKBinaryKeysetReader.h"
 #import "TINKKeysetHandle+Cleartext.h"
 #import "TINKKeysetHandle.h"
@@ -26,9 +30,18 @@
 #import "util/TINKStrings.h"
 
 #include "absl/status/status.h"
-#include "tink/util/test_keyset_handle.h"
+#include "tink/insecure_secret_key_access.h"
+#include "tink/proto_keyset_format.h"
+#include "tink/util/secret_data.h"
+#include "tink/util/statusor.h"
 #include "tink/util/test_util.h"
-#include "proto/tink.pb.h"
+#include "third_party/tink/objc/proto_redirect/tink_cc_pb_redirect.h"
+
+using ::crypto::tink::InsecureSecretKeyAccess;
+using ::crypto::tink::SerializeKeysetToProtoKeysetFormat;
+using ::crypto::tink::util::SecretData;
+using ::crypto::tink::util::SecretDataAsStringView;
+using ::crypto::tink::util::StatusOr;
 
 @interface TINKCleartextKeysetHandleTest : XCTestCase
 @end
@@ -59,9 +72,11 @@
       [[TINKKeysetHandle alloc] initCleartextKeysetHandleWithKeysetReader:reader error:&error];
 
   XCTAssertNotNil(handle);
-  XCTAssertTrue(
-      crypto::tink::TestKeysetHandle::GetKeyset(*handle.ccKeysetHandle).SerializeAsString() ==
-      keyset.SerializeAsString());
+  StatusOr<SecretData> serialized =
+      SerializeKeysetToProtoKeysetFormat(*handle.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(serialized.ok());
+  XCTAssertEqualObjects(TINKStringViewToNSData(SecretDataAsStringView(*serialized)),
+                        TINKStringViewToNSData(keyset.SerializeAsString()));
 
   // Trying to use the same reader again must fail.
   error = nil;

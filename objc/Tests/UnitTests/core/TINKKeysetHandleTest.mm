@@ -22,6 +22,10 @@
 #import <Security/Security.h>
 #import <XCTest/XCTest.h>
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #import "TINKAead.h"
 #import "TINKAeadKeyTemplate.h"
 #import "TINKAllConfig.h"
@@ -34,13 +38,20 @@
 
 #include "absl/status/status.h"
 #include "tink/binary_keyset_reader.h"
+#include "tink/insecure_secret_key_access.h"
+#include "tink/proto_keyset_format.h"
+#include "tink/util/secret_data.h"
 #include "tink/util/status.h"
-#include "tink/util/test_keyset_handle.h"
 #include "tink/util/test_util.h"
-#include "proto/tink.pb.h"
+#include "third_party/tink/objc/proto_redirect/tink_cc_pb_redirect.h"
 
+using ::crypto::tink::InsecureSecretKeyAccess;
+using ::crypto::tink::SerializeKeysetToProtoKeysetFormat;
 using ::crypto::tink::test::AddRawKey;
 using ::crypto::tink::test::AddTinkKey;
+using ::crypto::tink::util::SecretData;
+using ::crypto::tink::util::SecretDataAsStringView;
+using ::crypto::tink::util::StatusOr;
 using ::google::crypto::tink::EncryptedKeyset;
 using ::google::crypto::tink::KeyData;
 using ::google::crypto::tink::Keyset;
@@ -112,13 +123,13 @@ static Keyset *gKeyset;
     // Store the keyset.
     [attributes setObject:kGoodKeysetName forKey:(__bridge id)kSecAttrAccount];
     [attributes setObject:gGoodSerializedKeyset forKey:(__bridge id)kSecValueData];
-    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)attributes, NULL);
+    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)attributes, nullptr);
     XCTAssertTrue(status == errSecSuccess || status == errSecDuplicateItem);
 
     // Store the bad keyset.
     [attributes setObject:kBadKeysetName forKey:(__bridge id)kSecAttrAccount];
     [attributes setObject:gBadSerializedKeyset forKey:(__bridge id)kSecValueData];
-    status = SecItemAdd((__bridge CFDictionaryRef)attributes, NULL);
+    status = SecItemAdd((__bridge CFDictionaryRef)attributes, nullptr);
     XCTAssertTrue(status == errSecSuccess || status == errSecDuplicateItem);
   });
 }
@@ -147,11 +158,11 @@ static Keyset *gKeyset;
   TINKKeysetHandle *handle =
       [[TINKKeysetHandle alloc] initWithKeysetReader:reader andKey:aead error:nil];
   XCTAssertNotNil(handle);
-  std::string output;
-  crypto::tink::TestKeysetHandle::GetKeyset(*handle.ccKeysetHandle).SerializeToString(&output);
-
-  XCTAssertTrue([serializedKeysetData isEqualToData:[NSData dataWithBytes:output.data()
-                                                                   length:output.size()]]);
+  StatusOr<SecretData> serialized =
+      SerializeKeysetToProtoKeysetFormat(*handle.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(serialized.ok());
+  XCTAssertEqualObjects(serializedKeysetData,
+                        TINKStringViewToNSData(SecretDataAsStringView(*serialized)));
 }
 
 - (void)testWrongAead_Binary {
@@ -279,12 +290,12 @@ static Keyset *gKeyset;
   XCTAssertNil(error);
 
   // Verify the contents of the keyset.
-  auto ccKeyset = crypto::tink::TestKeysetHandle::GetKeyset(*handle.ccKeysetHandle);
-  std::string serializedCCKeyset;
-  XCTAssertTrue(ccKeyset.SerializeToString(&serializedCCKeyset));
-  XCTAssertTrue(
-      [gGoodSerializedKeyset isEqualToData:[NSData dataWithBytes:serializedCCKeyset.data()
-                                                          length:serializedCCKeyset.length()]]);
+  StatusOr<SecretData> serialized =
+      SerializeKeysetToProtoKeysetFormat(*handle.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(serialized.ok());
+
+  XCTAssertEqualObjects(gGoodSerializedKeyset,
+                        TINKStringViewToNSData(SecretDataAsStringView(*serialized)));
 }
 
 - (void)testBadKeysetFromKeychain {
@@ -345,15 +356,16 @@ static Keyset *gKeyset;
   XCTAssertNil(error);
 
   // Compare the two keysets, verify that they are identical.
-  auto keyset1 = crypto::tink::TestKeysetHandle::GetKeyset(*handle1.ccKeysetHandle);
-  std::string serializedKeyset1;
-  XCTAssertTrue(keyset1.SerializeToString(&serializedKeyset1));
+  StatusOr<SecretData> serializedKeyset1 =
+      SerializeKeysetToProtoKeysetFormat(*handle1.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(serializedKeyset1.ok());
 
-  auto keyset2 = crypto::tink::TestKeysetHandle::GetKeyset(*handle2.ccKeysetHandle);
-  std::string serializedKeyset2;
-  XCTAssertTrue(keyset2.SerializeToString(&serializedKeyset2));
+  StatusOr<SecretData> serializedKeyset2 =
+      SerializeKeysetToProtoKeysetFormat(*handle2.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(serializedKeyset2.ok());
 
-  XCTAssertTrue(serializedKeyset1 == serializedKeyset2);
+  XCTAssertEqualObjects(TINKStringViewToNSData(SecretDataAsStringView(*serializedKeyset1)),
+                        TINKStringViewToNSData(SecretDataAsStringView(*serializedKeyset2)));
 }
 
 - (void)testDeleteKeysetFromKeychain {
@@ -399,15 +411,28 @@ static Keyset *gKeyset;
   XCTAssertNotNil(publicHandle);
   XCTAssertNil(error);
 
-  auto keyset = crypto::tink::TestKeysetHandle::GetKeyset(*handle.ccKeysetHandle);
-  auto public_keyset = crypto::tink::TestKeysetHandle::GetKeyset(*publicHandle.ccKeysetHandle);
-  XCTAssertEqual(keyset.primary_key_id(), public_keyset.primary_key_id());
-  XCTAssertEqual(keyset.key_size(), public_keyset.key_size());
-  XCTAssertEqual(keyset.key(0).status(), public_keyset.key(0).status());
-  XCTAssertEqual(keyset.key(0).key_id(), public_keyset.key(0).key_id());
-  XCTAssertEqual(keyset.key(0).output_prefix_type(), public_keyset.key(0).output_prefix_type());
+  StatusOr<SecretData> serializedKeyset =
+      SerializeKeysetToProtoKeysetFormat(*handle.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(serializedKeyset.ok());
+
+  StatusOr<SecretData> serializedPublicKeyset = SerializeKeysetToProtoKeysetFormat(
+      *publicHandle.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(serializedKeyset.ok());
+
+  Keyset keyset;
+  XCTAssertTrue(
+      keyset.ParseFromString(std::string(SecretDataAsStringView(*serializedKeyset))));
+  Keyset publicKeyset;
+  XCTAssertTrue(
+      publicKeyset.ParseFromString(std::string(SecretDataAsStringView(*serializedPublicKeyset))));
+
+  XCTAssertEqual(keyset.primary_key_id(), publicKeyset.primary_key_id());
+  XCTAssertEqual(keyset.key_size(), publicKeyset.key_size());
+  XCTAssertEqual(keyset.key(0).status(), publicKeyset.key(0).status());
+  XCTAssertEqual(keyset.key(0).key_id(), publicKeyset.key(0).key_id());
+  XCTAssertEqual(keyset.key(0).output_prefix_type(), publicKeyset.key(0).output_prefix_type());
   XCTAssertEqual(google::crypto::tink::KeyData::ASYMMETRIC_PUBLIC,
-                 public_keyset.key(0).key_data().key_material_type());
+                 publicKeyset.key(0).key_data().key_material_type());
 }
 
 - (void)testPublicKeysetHandleWithHandleFailedNotAsymmetric {
@@ -444,9 +469,12 @@ static Keyset *gKeyset;
 
   XCTAssertNil(error);
   XCTAssertNotNil(handle);
-  XCTAssertTrue(
-      crypto::tink::TestKeysetHandle::GetKeyset(*handle.ccKeysetHandle).SerializeAsString() ==
-      keyset->SerializeAsString());
+  StatusOr<SecretData> ccSerializedKeysetSecretData =
+      SerializeKeysetToProtoKeysetFormat(*handle.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(ccSerializedKeysetSecretData.ok());
+  NSData *ccSerializedKeyset =
+      TINKStringViewToNSData(SecretDataAsStringView(*ccSerializedKeysetSecretData));
+  XCTAssertEqualObjects(ccSerializedKeyset, serializedKeyset);
 }
 
 - (void)testReadNoSecretFailForTypeUnknown {
@@ -547,8 +575,11 @@ static Keyset *gKeyset;
   XCTAssertNotNil(serializedKeysetNoSecret);
   XCTAssertNil(error);
 
-  auto testKeysetHandle = crypto::tink::TestKeysetHandle::GetKeyset(*publicHandle.ccKeysetHandle);
-  NSData *testSerializedKeyset = TINKStringToNSData(testKeysetHandle.SerializeAsString());
+  StatusOr<SecretData> testCCSerializedKeyset = SerializeKeysetToProtoKeysetFormat(
+      *publicHandle.ccKeysetHandle, InsecureSecretKeyAccess::Get());
+  XCTAssertTrue(testCCSerializedKeyset.ok());
+  NSData *testSerializedKeyset =
+      TINKStringViewToNSData(SecretDataAsStringView(*testCCSerializedKeyset));
   XCTAssertEqualObjects(serializedKeysetNoSecret, testSerializedKeyset);
 }
 
