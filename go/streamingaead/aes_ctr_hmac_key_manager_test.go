@@ -246,6 +246,13 @@ func genInvalidAESCTRHMACKeys() []proto.Message {
 
 		// bad version
 		testutil.NewAESCTRHMACKey(testutil.AESCTRHMACKeyVersion+1, 16, commonpb.HashType_SHA256, 16, commonpb.HashType_SHA256, 16, 4096),
+
+		// bad ciphertext_segment_size
+		testutil.NewAESCTRHMACKey(testutil.AESCTRHMACKeyVersion, 16, commonpb.HashType_SHA256, 16, commonpb.HashType_SHA256, 16, 2147483648),
+
+		// bad hmac params hash type
+		testutil.NewAESCTRHMACKey(testutil.AESCTRHMACKeyVersion, 16, commonpb.HashType_SHA256, 16, commonpb.HashType_SHA224, 16, 4096),
+		testutil.NewAESCTRHMACKey(testutil.AESCTRHMACKeyVersion, 16, commonpb.HashType_SHA256, 16, commonpb.HashType_SHA384, 16, 4096),
 	}
 }
 

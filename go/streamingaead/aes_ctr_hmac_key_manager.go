@@ -159,8 +159,8 @@ func (km *aesCTRHMACKeyManager) validateParams(params *chpb.AesCtrHmacStreamingP
 	if params.HkdfHashType == commonpb.HashType_UNKNOWN_HASH {
 		return errors.New("unknown HKDF hash type")
 	}
-	if params.HmacParams.Hash == commonpb.HashType_UNKNOWN_HASH {
-		return errors.New("uknown tag algorithm")
+	if params.HmacParams.Hash != commonpb.HashType_SHA1 && params.HmacParams.Hash != commonpb.HashType_SHA256 && params.HmacParams.Hash != commonpb.HashType_SHA512 {
+		return fmt.Errorf("Invalid tag algorithm %s", params.HmacParams.Hash)
 	}
 	hmacHash := commonpb.HashType_name[int32(params.HmacParams.Hash)]
 	if err := subtlemac.ValidateHMACParams(hmacHash, subtle.AESCTRHMACKeySizeInBytes, params.HmacParams.TagSize); err != nil {
@@ -169,6 +169,9 @@ func (km *aesCTRHMACKeyManager) validateParams(params *chpb.AesCtrHmacStreamingP
 	minSegmentSize := params.DerivedKeySize + subtle.AESCTRHMACNoncePrefixSizeInBytes + params.HmacParams.TagSize + 2
 	if params.CiphertextSegmentSize < minSegmentSize {
 		return fmt.Errorf("ciphertext segment size must be at least (derivedKeySize + noncePrefixInBytes + tagSizeInBytes + 2)")
+	}
+	if params.CiphertextSegmentSize > 0x7fffffff {
+		return fmt.Errorf("ciphertext segment size must be at most 2^31 - 1")
 	}
 	return nil
 }

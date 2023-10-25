@@ -45,19 +45,24 @@ public final class HybridConfig {
   public static final String ECIES_AEAD_HKDF_PRIVATE_KEY_TYPE_URL =
       new EciesAeadHkdfPrivateKeyManager().getKeyType();
 
-  /** @deprecated */
-  @Deprecated public static final RegistryConfig TINK_1_0_0 = RegistryConfig.getDefaultInstance();
+  /**
+   * @deprecated
+   */
+  @Deprecated
+  public static final RegistryConfig TINK_1_0_0 = RegistryConfig.getDefaultInstance();
   /**
    * @deprecated
    * @since 1.1.0
    */
-  @Deprecated public static final RegistryConfig TINK_1_1_0 = RegistryConfig.getDefaultInstance();
+  @Deprecated
+  public static final RegistryConfig TINK_1_1_0 = RegistryConfig.getDefaultInstance();
 
   /**
    * @deprecated
    * @since 1.2.0
    */
-  @Deprecated public static final RegistryConfig LATEST = RegistryConfig.getDefaultInstance();
+  @Deprecated
+  public static final RegistryConfig LATEST = RegistryConfig.getDefaultInstance();
 
   static {
     try {

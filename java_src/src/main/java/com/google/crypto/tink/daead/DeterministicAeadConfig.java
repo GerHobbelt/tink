@@ -40,14 +40,18 @@ import java.security.GeneralSecurityException;
 public final class DeterministicAeadConfig {
   public static final String AES_SIV_TYPE_URL = new AesSivKeyManager().getKeyType();
 
-  /** @deprecated use {@link #register} */
-  @Deprecated public static final RegistryConfig TINK_1_1_0 = RegistryConfig.getDefaultInstance();
+  /**
+   * @deprecated use {@link #register}
+   */
+  @Deprecated
+  public static final RegistryConfig TINK_1_1_0 = RegistryConfig.getDefaultInstance();
 
   /**
    * @deprecated use {@link #register}
    * @since 1.2.0
    */
-  @Deprecated public static final RegistryConfig LATEST = RegistryConfig.getDefaultInstance();
+  @Deprecated
+  public static final RegistryConfig LATEST = RegistryConfig.getDefaultInstance();
 
   static {
     try {
