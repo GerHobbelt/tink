@@ -76,6 +76,7 @@ import com.google.crypto.tink.streamingaead.StreamingAeadConfig;
 import com.google.crypto.tink.subtle.EllipticCurves;
 import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.subtle.Random;
+import com.google.errorprone.annotations.InlineMe;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.MessageLite;
@@ -558,12 +559,28 @@ public final class TestUtil {
     assertArrayEquals(plaintext, decrypted);
   }
 
-  /** Decodes hex string. */
+  /**
+   * Decodes hex string.
+   *
+   * @deprecated Usages should be inlined.
+   */
+  @InlineMe(
+      replacement = "Hex.decode(hexData)",
+      imports = {"com.google.crypto.tink.subtle.Hex"})
+  @Deprecated
   public static byte[] hexDecode(String hexData) {
     return Hex.decode(hexData);
   }
 
-  /** Encodes bytes to hex string. */
+  /**
+   * Encodes bytes to hex string.
+   *
+   * @deprecated Usages should be inlined.
+   */
+  @InlineMe(
+      replacement = "Hex.encode(data)",
+      imports = {"com.google.crypto.tink.subtle.Hex"})
+  @Deprecated
   public static String hexEncode(byte[] data) {
     return Hex.encode(data);
   }
@@ -594,7 +611,9 @@ public final class TestUtil {
    * Check that this is running in Remote Build Execution.
    *
    * @return true if running on Remote Build Execution.
+   * @deprecated This isn't supported anymore
    */
+  @Deprecated
   public static boolean isRemoteBuildExecution() {
     return false;
   }

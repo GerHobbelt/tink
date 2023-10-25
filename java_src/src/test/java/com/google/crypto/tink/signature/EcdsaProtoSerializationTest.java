@@ -33,7 +33,7 @@ import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
 import com.google.crypto.tink.proto.KeyTemplate;
 import com.google.crypto.tink.proto.OutputPrefixType;
-import com.google.crypto.tink.testing.TestUtil;
+import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.util.SecretBigInteger;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
@@ -210,8 +210,8 @@ public final class EcdsaProtoSerializationTest {
         com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
             .setVersion(0)
             // X and Y are currently serialized with an extra zero at the beginning.
-            .setX(ByteString.copyFrom(TestUtil.hexDecode("00" + hexX)))
-            .setY(ByteString.copyFrom(TestUtil.hexDecode("00" + hexY)))
+            .setX(ByteString.copyFrom(Hex.decode("00" + hexX)))
+            .setY(ByteString.copyFrom(Hex.decode("00" + hexY)))
             .setParams(
                 EcdsaParams.newBuilder()
                     .setHashType(HashType.SHA256)
@@ -260,8 +260,8 @@ public final class EcdsaProtoSerializationTest {
         com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
             .setVersion(0)
             // X and Y are currently serialized with an extra zero at the beginning.
-            .setX(ByteString.copyFrom(TestUtil.hexDecode("00" + hexX)))
-            .setY(ByteString.copyFrom(TestUtil.hexDecode("00" + hexY)))
+            .setX(ByteString.copyFrom(Hex.decode("00" + hexX)))
+            .setY(ByteString.copyFrom(Hex.decode("00" + hexY)))
             .setParams(
                 EcdsaParams.newBuilder()
                     .setHashType(HashType.SHA384)
@@ -298,8 +298,8 @@ public final class EcdsaProtoSerializationTest {
     com.google.crypto.tink.proto.EcdsaPublicKey protoPublicKey =
         com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
             .setVersion(0)
-            .setX(ByteString.copyFrom(TestUtil.hexDecode(hexXTruncated)))
-            .setY(ByteString.copyFrom(TestUtil.hexDecode(hexYWithLeadingZeros)))
+            .setX(ByteString.copyFrom(Hex.decode(hexXTruncated)))
+            .setY(ByteString.copyFrom(Hex.decode(hexYWithLeadingZeros)))
             .setParams(
                 EcdsaParams.newBuilder()
                     .setHashType(HashType.SHA512)
@@ -333,9 +333,9 @@ public final class EcdsaProtoSerializationTest {
             + "01ba52c56fc8776d9e8f5db4f0cc27636d0b741bbe05400697942e80b739884a83"
             + "bde99e0f6716939e632bc8986fa18dccd443a348b6c3e522497955a4f3c302f676";
     assertThat(protoPublicKeyFromSerialized.getX())
-        .isEqualTo(ByteString.copyFrom(TestUtil.hexDecode(expectedHexX)));
+        .isEqualTo(ByteString.copyFrom(Hex.decode(expectedHexX)));
     assertThat(protoPublicKeyFromSerialized.getY())
-        .isEqualTo(ByteString.copyFrom(TestUtil.hexDecode(expectedHexY)));
+        .isEqualTo(ByteString.copyFrom(Hex.decode(expectedHexY)));
   }
 
   @Test
@@ -401,8 +401,8 @@ public final class EcdsaProtoSerializationTest {
         com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
             .setVersion(0)
             // X and Y are currently serialized with an extra zero at the beginning.
-            .setX(ByteString.copyFrom(TestUtil.hexDecode("00" + hexX)))
-            .setY(ByteString.copyFrom(TestUtil.hexDecode("00" + hexY)))
+            .setX(ByteString.copyFrom(Hex.decode("00" + hexX)))
+            .setY(ByteString.copyFrom(Hex.decode("00" + hexY)))
             .setParams(
                 EcdsaParams.newBuilder()
                     .setHashType(HashType.SHA256)
@@ -414,7 +414,7 @@ public final class EcdsaProtoSerializationTest {
             .setVersion(0)
             .setPublicKey(protoPublicKey)
             // privateValue is currently serialized with an extra zero at the beginning.
-            .setKeyValue(ByteString.copyFrom(TestUtil.hexDecode("00" + hexPrivateValue)))
+            .setKeyValue(ByteString.copyFrom(Hex.decode("00" + hexPrivateValue)))
             .build();
     ProtoKeySerialization serialization =
         ProtoKeySerialization.create(
@@ -444,8 +444,8 @@ public final class EcdsaProtoSerializationTest {
     com.google.crypto.tink.proto.EcdsaPublicKey protoPublicKey =
         com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
             .setVersion(0)
-            .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-            .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+            .setX(ByteString.copyFrom(Hex.decode(hexX)))
+            .setY(ByteString.copyFrom(Hex.decode(hexY)))
             .setParams(
                 EcdsaParams.newBuilder()
                     .setHashType(HashType.SHA256)
@@ -456,7 +456,7 @@ public final class EcdsaProtoSerializationTest {
         com.google.crypto.tink.proto.EcdsaPrivateKey.newBuilder()
             .setVersion(0)
             .setPublicKey(protoPublicKey)
-            .setKeyValue(ByteString.copyFrom(TestUtil.hexDecode(hexPrivateValue)))
+            .setKeyValue(ByteString.copyFrom(Hex.decode(hexPrivateValue)))
             .build();
     ProtoKeySerialization serialization =
         ProtoKeySerialization.create(
@@ -576,10 +576,10 @@ public final class EcdsaProtoSerializationTest {
             PUBLIC_TYPE_URL,
             com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
                 .setVersion(1)
-                .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
+                .setX(ByteString.copyFrom(Hex.decode(hexX)))
                 .setY(
                     ByteString.copyFrom(
-                        TestUtil.hexDecode(
+                        Hex.decode(
                             // modified hexY
                             "7903FE1008B8BC99A41AE9E95628BC64F2F1B20C2D7E9F5177A3C294D4462298")))
                 .setParams(
@@ -597,8 +597,8 @@ public final class EcdsaProtoSerializationTest {
             PUBLIC_TYPE_URL,
             com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
                 .setVersion(1)
-                .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-                .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+                .setX(ByteString.copyFrom(Hex.decode(hexX)))
+                .setY(ByteString.copyFrom(Hex.decode(hexY)))
                 .setParams(
                     EcdsaParams.newBuilder()
                         .setHashType(HashType.SHA256)
@@ -614,8 +614,8 @@ public final class EcdsaProtoSerializationTest {
             PUBLIC_TYPE_URL,
             com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
                 .setVersion(0)
-                .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-                .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+                .setX(ByteString.copyFrom(Hex.decode(hexX)))
+                .setY(ByteString.copyFrom(Hex.decode(hexY)))
                 .setParams(
                     EcdsaParams.newBuilder()
                         .setHashType(HashType.SHA256)
@@ -631,8 +631,8 @@ public final class EcdsaProtoSerializationTest {
             PUBLIC_TYPE_URL,
             com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
                 .setVersion(0)
-                .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-                .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+                .setX(ByteString.copyFrom(Hex.decode(hexX)))
+                .setY(ByteString.copyFrom(Hex.decode(hexY)))
                 .setParams(
                     EcdsaParams.newBuilder()
                         .setHashType(HashType.UNKNOWN_HASH)
@@ -648,8 +648,8 @@ public final class EcdsaProtoSerializationTest {
             PUBLIC_TYPE_URL,
             com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
                 .setVersion(0)
-                .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-                .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+                .setX(ByteString.copyFrom(Hex.decode(hexX)))
+                .setY(ByteString.copyFrom(Hex.decode(hexY)))
                 .setParams(
                     EcdsaParams.newBuilder()
                         .setHashType(HashType.SHA256)
@@ -665,8 +665,8 @@ public final class EcdsaProtoSerializationTest {
             PUBLIC_TYPE_URL,
             com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
                 .setVersion(0)
-                .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-                .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+                .setX(ByteString.copyFrom(Hex.decode(hexX)))
+                .setY(ByteString.copyFrom(Hex.decode(hexY)))
                 .setParams(
                     EcdsaParams.newBuilder()
                         .setHashType(HashType.SHA256)
@@ -691,8 +691,8 @@ public final class EcdsaProtoSerializationTest {
             "WrongTypeUrl",
             com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
                 .setVersion(0)
-                .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-                .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+                .setX(ByteString.copyFrom(Hex.decode(hexX)))
+                .setY(ByteString.copyFrom(Hex.decode(hexY)))
                 .setParams(
                     EcdsaParams.newBuilder()
                         .setHashType(HashType.SHA256)
@@ -731,8 +731,8 @@ public final class EcdsaProtoSerializationTest {
       com.google.crypto.tink.proto.EcdsaPublicKey validProtoPublicKey =
           com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
               .setVersion(0)
-              .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-              .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+              .setX(ByteString.copyFrom(Hex.decode(hexX)))
+              .setY(ByteString.copyFrom(Hex.decode(hexY)))
               .setParams(
                   EcdsaParams.newBuilder()
                       .setHashType(HashType.SHA256)
@@ -749,7 +749,7 @@ public final class EcdsaProtoSerializationTest {
                 .setPublicKey(validProtoPublicKey)
                 .setKeyValue(
                     ByteString.copyFrom(
-                        TestUtil.hexDecode(
+                        Hex.decode(
                             // modified hexPrivateValue
                             "C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6720")))
                 .build()
@@ -763,7 +763,7 @@ public final class EcdsaProtoSerializationTest {
             com.google.crypto.tink.proto.EcdsaPrivateKey.newBuilder()
                 .setVersion(1)
                 .setPublicKey(validProtoPublicKey)
-                .setKeyValue(ByteString.copyFrom(TestUtil.hexDecode(hexPrivateValue)))
+                .setKeyValue(ByteString.copyFrom(Hex.decode(hexPrivateValue)))
                 .build()
                 .toByteString(),
             KeyMaterialType.ASYMMETRIC_PRIVATE,
@@ -775,7 +775,7 @@ public final class EcdsaProtoSerializationTest {
             com.google.crypto.tink.proto.EcdsaPrivateKey.newBuilder()
                 .setVersion(0)
                 .setPublicKey(validProtoPublicKey)
-                .setKeyValue(ByteString.copyFrom(TestUtil.hexDecode(hexPrivateValue)))
+                .setKeyValue(ByteString.copyFrom(Hex.decode(hexPrivateValue)))
                 .build()
                 .toByteString(),
             KeyMaterialType.ASYMMETRIC_PRIVATE,
@@ -789,15 +789,15 @@ public final class EcdsaProtoSerializationTest {
                 .setPublicKey(
                     com.google.crypto.tink.proto.EcdsaPublicKey.newBuilder()
                         .setVersion(0)
-                        .setX(ByteString.copyFrom(TestUtil.hexDecode(hexX)))
-                        .setY(ByteString.copyFrom(TestUtil.hexDecode(hexY)))
+                        .setX(ByteString.copyFrom(Hex.decode(hexX)))
+                        .setY(ByteString.copyFrom(Hex.decode(hexY)))
                         .setParams(
                             EcdsaParams.newBuilder()
                                 .setHashType(HashType.SHA256)
                                 .setCurve(EllipticCurveType.NIST_P256)
                                 .setEncoding(EcdsaSignatureEncoding.UNKNOWN_ENCODING))
                         .build())
-                .setKeyValue(ByteString.copyFrom(TestUtil.hexDecode(hexPrivateValue)))
+                .setKeyValue(ByteString.copyFrom(Hex.decode(hexPrivateValue)))
                 .build()
                 .toByteString(),
             KeyMaterialType.ASYMMETRIC_PRIVATE,
@@ -818,7 +818,7 @@ public final class EcdsaProtoSerializationTest {
             com.google.crypto.tink.proto.EcdsaPrivateKey.newBuilder()
                 .setVersion(0)
                 .setPublicKey(validProtoPublicKey)
-                .setKeyValue(ByteString.copyFrom(TestUtil.hexDecode(hexPrivateValue)))
+                .setKeyValue(ByteString.copyFrom(Hex.decode(hexPrivateValue)))
                 .build()
                 .toByteString(),
             KeyMaterialType.ASYMMETRIC_PRIVATE,
