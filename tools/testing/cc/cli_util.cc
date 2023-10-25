@@ -27,7 +27,6 @@
 #include "tink/binary_keyset_reader.h"
 #include "tink/binary_keyset_writer.h"
 #include "tink/cleartext_keyset_handle.h"
-#include "tink/config.h"
 #include "tink/config/tink_config.h"
 #include "tink/input_stream.h"
 #include "tink/integration/awskms/aws_kms_client.h"
@@ -227,7 +226,7 @@ Status CliUtil::InitAws() {
   if (!client_add_result.ok()) {
     return Status(absl::StatusCode::kInternal, "Failed to add KMS client.");
   }
-  return util::OkStatus();
+  return crypto::tink::util::OkStatus();
 }
 
 // static
