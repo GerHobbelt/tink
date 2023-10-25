@@ -55,9 +55,12 @@ func (x *XChaCha20Poly1305) Encrypt(plaintext []byte, associatedData []byte) ([]
 		return nil, err
 	}
 
-	n := x.newNonce()
-	ct := c.Seal(nil, n, plaintext, associatedData)
-	return append(n, ct...), nil
+	nounce := x.newNonce()
+	// Make the capacity of dst large enough so that both the nounce and the ciphertext fit inside.
+	dst := make([]byte, 0, chacha20poly1305.NonceSizeX+len(plaintext)+c.Overhead())
+	dst = append(dst, nounce...)
+	// Seal appends the ciphertext to dst. So the final output is: nounce || ciphertext.
+	return c.Seal(dst, nounce, plaintext, associatedData), nil
 }
 
 // Decrypt decrypts ciphertext with associatedData.
