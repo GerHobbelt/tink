@@ -163,8 +163,11 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
   private static void validateParams(AesCtrHmacStreamingParams params)
       throws GeneralSecurityException {
     Validators.validateAesKeySize(params.getDerivedKeySize());
-    if (params.getHkdfHashType() == HashType.UNKNOWN_HASH) {
-      throw new GeneralSecurityException("unknown HKDF hash type");
+    if (params.getHkdfHashType() != HashType.SHA1
+        && params.getHkdfHashType() != HashType.SHA256
+        && params.getHkdfHashType() != HashType.SHA512) {
+      throw new GeneralSecurityException(
+          "Invalid HKDF hash type: " + params.getHkdfHashType().getNumber());
     }
     if (params.getHmacParams().getHash() == HashType.UNKNOWN_HASH) {
       throw new GeneralSecurityException("unknown HMAC hash type");
@@ -222,10 +225,7 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
    *       <li>Tag size: 32 bytes
    *       <li>Ciphertext segment size: 4096
    *     </ul>
-   *
-   * @deprecated use {@code KeyTemplates.get("AES128_CTR_HMAC_SHA256_4KB")}
    */
-  @Deprecated /* Deprecation under consideration */
   public static final KeyTemplate aes128CtrHmacSha2564KBTemplate() {
     return createKeyTemplate(16, HashType.SHA256, 16, HashType.SHA256, 32, 4096);
   }
@@ -241,10 +241,7 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
    *       <li>Tag size: 32 bytes
    *       <li>Ciphertext segment size: 1MB
    *     </ul>
-   *
-   * @deprecated use {@code KeyTemplates.get("AES128_CTR_HMAC_SHA256_1MB")}
    */
-  @Deprecated /* Deprecation under consideration */
   public static final KeyTemplate aes128CtrHmacSha2561MBTemplate() {
     return createKeyTemplate(16, HashType.SHA256, 16, HashType.SHA256, 32, 1 << 20);
   }
@@ -260,10 +257,7 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
    *       <li>Tag size: 32 bytes
    *       <li>Ciphertext segment size: 4096
    *     </ul>
-   *
-   * @deprecated use {@code KeyTemplates.get("AES256_CTR_HMAC_SHA256_4KB")}
    */
-  @Deprecated /* Deprecation under consideration */
   public static final KeyTemplate aes256CtrHmacSha2564KBTemplate() {
     return createKeyTemplate(32, HashType.SHA256, 32, HashType.SHA256, 32, 4096);
   }
@@ -279,10 +273,7 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
    *       <li>Tag size: 32 bytes
    *       <li>Ciphertext segment size: 1MB
    *     </ul>
-   *
-   * @deprecated use {@code KeyTemplates.get("AES256_CTR_HMAC_SHA256_1MB")}
    */
-  @Deprecated /* Deprecation under consideration */
   public static final KeyTemplate aes256CtrHmacSha2561MBTemplate() {
     return createKeyTemplate(32, HashType.SHA256, 32, HashType.SHA256, 32, 1 << 20);
   }
