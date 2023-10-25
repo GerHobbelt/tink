@@ -47,7 +47,7 @@ run_cc_tests() {
 
 run_go_tests() {
   use_bazel "$(cat go/.bazelversion)"
-  ./kokoro/testutils/run_bazel_tests.sh "go"
+  ./kokoro/testutils/run_bazel_tests.sh -t --test_arg=--test.v "go"
 }
 
 run_py_tests() {
@@ -119,12 +119,15 @@ run_java_examples_tests() {
 run_py_examples_tests() {
   use_bazel "$(cat python/examples/.bazelversion)"
   ## Install Tink and its dependencies via pip for the examples/python tests.
-  source ./kokoro/testutils/install_tink_via_pip.sh "${PWD}/python"
+  ./kokoro/testutils/install_tink_via_pip.sh "${PWD}/python" "${PWD}"
   if [[ "${IS_KOKORO}" == "true" ]]; then
+    local pip_flags=( --require-hashes )
+    if [[ "${PLATFORM}" == "darwin" ]]; then
+      pip_flags+=( --user )
+    fi
+    readonly pip_flags
     # Install dependencies for the examples/python tests.
-    pip3 install "${PIP_FLAGS[@]}" \
-      -r python/examples/requirements.txt \
-      -c python/examples/constraints.in
+    pip3 install "${pip_flags[@]}" -r python/examples/requirements.txt
   fi
 
   local -a MANUAL_EXAMPLE_PYTHON_TARGETS

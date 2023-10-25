@@ -14,16 +14,13 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "tink/mac/hmac_key.h"
+#include "tink/aead/aes_gcm_key.h"
 
-#include <memory>
 #include <string>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/escaping.h"
-#include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
-#include "tink/mac/hmac_parameters.h"
+#include "tink/aead/aes_gcm_parameters.h"
 #include "tink/partial_key_access_token.h"
 #include "tink/restricted_data.h"
 #include "tink/subtle/subtle_util.h"
@@ -32,14 +29,44 @@
 
 namespace crypto {
 namespace tink {
+namespace {
 
-util::StatusOr<HmacKey> HmacKey::Create(const HmacParameters& parameters,
-                                        const RestrictedData& key_bytes,
-                                        absl::optional<int> id_requirement,
-                                        PartialKeyAccessToken token) {
+util::StatusOr<std::string> ComputeOutputPrefix(
+    const AesGcmParameters& parameters, absl::optional<int> id_requirement) {
+  switch (parameters.GetVariant()) {
+    case AesGcmParameters::Variant::kNoPrefix:
+      return std::string("");  // Empty prefix.
+    case AesGcmParameters::Variant::kCrunchy:
+      if (!id_requirement.has_value()) {
+        return util::Status(
+            absl::StatusCode::kInvalidArgument,
+            "id requirement must have value with kCrunchy or kLegacy");
+      }
+      return absl::StrCat(absl::HexStringToBytes("00"),
+                          subtle::BigEndian32(*id_requirement));
+    case AesGcmParameters::Variant::kTink:
+      if (!id_requirement.has_value()) {
+        return util::Status(absl::StatusCode::kInvalidArgument,
+                            "id requirement must have value with kTink");
+      }
+      return absl::StrCat(absl::HexStringToBytes("01"),
+                          subtle::BigEndian32(*id_requirement));
+    default:
+      return util::Status(
+          absl::StatusCode::kInvalidArgument,
+          absl::StrCat("Invalid variant: ", parameters.GetVariant()));
+  }
+}
+
+}  // namespace
+
+util::StatusOr<AesGcmKey> AesGcmKey::Create(const AesGcmParameters& parameters,
+                                            const RestrictedData& key_bytes,
+                                            absl::optional<int> id_requirement,
+                                            PartialKeyAccessToken token) {
   if (parameters.KeySizeInBytes() != key_bytes.size()) {
     return util::Status(absl::StatusCode::kInvalidArgument,
-                        "Key size does not match HMAC parameters");
+                        "Key size does not match AES-GCM parameters");
   }
   if (parameters.HasIdRequirement() && !id_requirement.has_value()) {
     return util::Status(
@@ -58,41 +85,12 @@ util::StatusOr<HmacKey> HmacKey::Create(const HmacParameters& parameters,
   if (!output_prefix.ok()) {
     return output_prefix.status();
   }
-  return HmacKey(parameters, key_bytes, id_requirement,
-                 *std::move(output_prefix));
+  return AesGcmKey(parameters, key_bytes, id_requirement,
+                   *std::move(output_prefix));
 }
 
-util::StatusOr<std::string> HmacKey::ComputeOutputPrefix(
-    const HmacParameters& parameters, absl::optional<int> id_requirement) {
-  switch (parameters.GetVariant()) {
-    case HmacParameters::Variant::kNoPrefix:
-      return std::string("");  // Empty prefix.
-    case HmacParameters::Variant::kLegacy:
-      ABSL_FALLTHROUGH_INTENDED;
-    case HmacParameters::Variant::kCrunchy:
-      if (!id_requirement.has_value()) {
-        return util::Status(
-            absl::StatusCode::kInvalidArgument,
-            "id requirement must have value with kCrunchy or kLegacy");
-      }
-      return absl::StrCat(absl::HexStringToBytes("00"),
-                          subtle::BigEndian32(*id_requirement));
-    case HmacParameters::Variant::kTink:
-      if (!id_requirement.has_value()) {
-        return util::Status(absl::StatusCode::kInvalidArgument,
-                            "id requirement must have value with kTink");
-      }
-      return absl::StrCat(absl::HexStringToBytes("01"),
-                          subtle::BigEndian32(*id_requirement));
-    default:
-      return util::Status(
-          absl::StatusCode::kInvalidArgument,
-          absl::StrCat("Invalid variant: ", parameters.GetVariant()));
-  }
-}
-
-bool HmacKey::operator==(const Key& other) const {
-  const HmacKey* that = dynamic_cast<const HmacKey*>(&other);
+bool AesGcmKey::operator==(const Key& other) const {
+  const AesGcmKey* that = dynamic_cast<const AesGcmKey*>(&other);
   if (that == nullptr) {
     return false;
   }
