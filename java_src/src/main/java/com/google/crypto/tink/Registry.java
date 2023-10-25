@@ -498,15 +498,14 @@ public final class Registry {
     return result;
   }
 
-  /** @return a {@link KeyManager} for the given {@code typeUrl} (if found). */
+  /** Returns a {@link KeyManager} for the given {@code typeUrl} (if found). */
   public static <P> KeyManager<P> getKeyManager(String typeUrl, Class<P> primitiveClass)
       throws GeneralSecurityException {
     return keyManagerRegistry.get().getKeyManager(typeUrl, primitiveClass);
   }
 
-  /** @return a {@link KeyManager} for the given {@code typeUrl} (if found). */
-  public static KeyManager<?> getUntypedKeyManager(String typeUrl)
-      throws GeneralSecurityException {
+  /** Returns a {@link KeyManager} for the given {@code typeUrl} (if found). */
+  public static KeyManager<?> getUntypedKeyManager(String typeUrl) throws GeneralSecurityException {
     return keyManagerRegistry.get().getUntypedKeyManager(typeUrl);
   }
 
@@ -553,7 +552,9 @@ public final class Registry {
    * {@link KeyManager#newKey} with {@code keyTemplate} as the parameter.
    *
    * @return a new key
+   * @deprecated Use {@code newKeyData} instead.
    */
+  @Deprecated
   public static synchronized MessageLite newKey(
       com.google.crypto.tink.proto.KeyTemplate keyTemplate) throws GeneralSecurityException {
     KeyManager<?> manager = getUntypedKeyManager(keyTemplate.getTypeUrl());
@@ -633,14 +634,14 @@ public final class Registry {
    * KeyManager#getPrimitive} with {@code key} as the parameter.
    *
    * @return a new primitive
-   * @deprecated Use {@code getPrimitive(typeUrl, key, P.class)} instead.
+   * @deprecated Use {@code getPrimitive(typeUrl, serializedKey, P.class)} instead.
    */
   @SuppressWarnings("TypeParameterUnusedInFormals")
   @Deprecated
   public static <P> P getPrimitive(String typeUrl, MessageLite key)
       throws GeneralSecurityException {
     KeyManager<P> manager = getKeyManager(typeUrl);
-    return manager.getPrimitive(key);
+    return manager.getPrimitive(key.toByteString());
   }
 
   /**
@@ -650,11 +651,13 @@ public final class Registry {
    * KeyManager#getPrimitive} with {@code key} as the parameter.
    *
    * @return a new primitive
+   * @deprecated Use {@code getPrimitive(typeUrl, serializedKey, Primitive.class} instead.
    */
-  public static <P> P getPrimitive(String typeUrl, MessageLite key, Class<P> primitiveClass)
-      throws GeneralSecurityException {
+  @Deprecated
+  public static <P> P getPrimitive(
+      String typeUrl, MessageLite key, Class<P> primitiveClass) throws GeneralSecurityException {
     KeyManager<P> manager = keyManagerRegistry.get().getKeyManager(typeUrl, primitiveClass);
-    return manager.getPrimitive(key);
+    return manager.getPrimitive(key.toByteString());
   }
 
   /**
@@ -796,16 +799,6 @@ public final class Registry {
     } catch (GeneralSecurityException e) {
       return null;
     }
-  }
-
-  /**
-   * Returns the key proto in the keyData if a corresponding key type manager was registered.
-   * Returns null if the key type was registered with a {@link KeyManager} (and not a {@link
-   * KeyTypeManager}).
-   */
-  static MessageLite parseKeyData(KeyData keyData)
-      throws GeneralSecurityException, InvalidProtocolBufferException {
-    return keyManagerRegistry.get().parseKeyData(keyData);
   }
 
   /**
