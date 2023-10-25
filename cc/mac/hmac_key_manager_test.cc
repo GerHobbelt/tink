@@ -17,13 +17,14 @@
 #include "tink/mac/hmac_key_manager.h"
 
 #include <memory>
+#include <sstream>
 #include <string>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "tink/core/key_manager_impl.h"
 #include "tink/chunked_mac.h"
+#include "tink/core/key_manager_impl.h"
 #include "tink/mac.h"
 #include "tink/util/istream_input_stream.h"
 #include "tink/util/secret_data.h"
@@ -42,7 +43,6 @@ using ::crypto::tink::util::StatusOr;
 using ::google::crypto::tink::HashType;
 using ::google::crypto::tink::HmacKey;
 using ::google::crypto::tink::HmacKeyFormat;
-using ::google::crypto::tink::KeyData;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Not;

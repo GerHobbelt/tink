@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
@@ -64,7 +65,7 @@ struct NistTestVector {
   int salt_length;
 };
 
-const NistTestVector GetNistTestVector() {
+NistTestVector GetNistTestVector() {
   NistTestVector test_vector = {
       absl::HexStringToBytes(
           "a47d04e7cacdba4ea26eca8a4c6e14563c2ce03b623b768c0d49868a57121301dbf7"

@@ -16,6 +16,8 @@
 
 #include "tink/prf/hmac_prf_key_manager.h"
 
+#include <sstream>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
@@ -39,7 +41,6 @@ using ::crypto::tink::util::StatusOr;
 using ::google::crypto::tink::HashType;
 using ::google::crypto::tink::HmacPrfKey;
 using ::google::crypto::tink::HmacPrfKeyFormat;
-using ::google::crypto::tink::KeyData;
 using ::testing::HasSubstr;
 using ::testing::Not;
 using ::testing::SizeIs;

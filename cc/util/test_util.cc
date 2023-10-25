@@ -24,7 +24,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <iostream>
+#include <memory>
+#include <ostream>
 #include <string>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -59,7 +63,6 @@ using crypto::tink::util::Enums;
 using crypto::tink::util::Status;
 using google::crypto::tink::AesGcmKeyFormat;
 using google::crypto::tink::EcdsaPrivateKey;
-using google::crypto::tink::EcdsaSignatureEncoding;
 using google::crypto::tink::EciesAeadHkdfPrivateKey;
 using google::crypto::tink::Ed25519PrivateKey;
 using google::crypto::tink::Keyset;

@@ -451,6 +451,7 @@ cc_library(
         "//util:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -604,6 +605,28 @@ cc_test(
     srcs = ["parameters_parser_test.cc"],
     deps = [
         ":parameters_parser",
+        ":serialization",
+        "//:parameters",
+        "//util:test_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "parameters_serializer",
+    hdrs = ["parameters_serializer.h"],
+    include_prefix = "tink/internal",
+    deps = [
+        "//util:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "parameters_serializer_test",
+    srcs = ["parameters_serializer_test.cc"],
+    deps = [
+        ":parameters_serializer",
         ":serialization",
         "//:parameters",
         "//util:test_matchers",
