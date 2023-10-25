@@ -27,7 +27,6 @@ import (
 	"github.com/google/tink/go/signature"
 	"github.com/google/tink/go/testkeyset"
 	"github.com/google/tink/go/testutil"
-
 	tinkpb "github.com/google/tink/go/proto/tink_go_proto"
 )
 
@@ -196,7 +195,7 @@ func TestReadWithMismatchedAssociatedData(t *testing.T) {
 }
 
 func TestWriteAndReadWithNoSecrets(t *testing.T) {
-	// Create a keyset containing public key material
+	// Create a keyset that contains a public key.
 	privateHandle, err := keyset.NewHandle(signature.ECDSAP256KeyTemplate())
 	if err != nil {
 		t.Fatalf("keyset.NewHandle(signature.ECDSAP256KeyTemplate()) err = %v, want nil", err)
@@ -223,9 +222,8 @@ func TestWriteAndReadWithNoSecrets(t *testing.T) {
 	}
 }
 
-// TODO(b/268044921) Convert to table-driven test.
-func TestWriteWithNoSecretsFailWhenHandlingSecretKeyMaterial(t *testing.T) {
-	// Create a keyset containing secret key material (symmetric)
+func TestWriteWithNoSecretsFailsWithSymmetricSecretKey(t *testing.T) {
+	// Create a keyset that contains a symmetric secret key.
 	handle, err := keyset.NewHandle(mac.HMACSHA256Tag128KeyTemplate())
 	if err != nil {
 		t.Fatalf("keyset.NewHandle(aead.AES256GCMKeyTemplate()) err = %v, want nil", err)
@@ -234,12 +232,12 @@ func TestWriteWithNoSecretsFailWhenHandlingSecretKeyMaterial(t *testing.T) {
 	buff := &bytes.Buffer{}
 	err = handle.WriteWithNoSecrets(keyset.NewBinaryWriter(buff))
 	if err == nil {
-		t.Error("handle.WriteWithNoSecrets() should fail when exporting secret key material")
+		t.Error("handle.WriteWithNoSecrets() = nil, want error")
 	}
 }
 
-func TestReadWithNoSecretsFunctionsFailWhenHandlingSecretKeyMaterial(t *testing.T) {
-	// Create a keyset containing secret key material (symmetric)
+func TestReadWithNoSecretsFailsWithSymmetricSecretKey(t *testing.T) {
+	// Create a keyset that contains a symmetric secret key.
 	handle, err := keyset.NewHandle(mac.HMACSHA256Tag128KeyTemplate())
 	if err != nil {
 		t.Fatalf("keyset.NewHandle(aead.AES256GCMKeyTemplate()) err = %v, want nil", err)
@@ -253,12 +251,44 @@ func TestReadWithNoSecretsFunctionsFailWhenHandlingSecretKeyMaterial(t *testing.
 
 	_, err = keyset.ReadWithNoSecrets(keyset.NewBinaryReader(bytes.NewBuffer(serialized)))
 	if err == nil {
-		t.Error("keyset.ReadWithNoSecrets should fail when importing secret key material")
+		t.Error("keyset.ReadWithNoSecrets() = nil, want error")
+	}
+}
+
+func TestWriteWithNoSecretsFailsWithPrivateKey(t *testing.T) {
+	// Create a keyset that contains a private key.
+	handle, err := keyset.NewHandle(signature.ECDSAP256KeyTemplate())
+	if err != nil {
+		t.Fatalf("keyset.NewHandle(signature.ECDSAP256KeyTemplate()) err = %v, want nil", err)
+	}
+
+	buff := &bytes.Buffer{}
+	if err := handle.WriteWithNoSecrets(keyset.NewBinaryWriter(buff)); err == nil {
+		t.Error("handle.WriteWithNoSecrets() = nil, want error")
+	}
+}
+
+func TestReadWithNoSecretsFailsWithPrivateKey(t *testing.T) {
+	// Create a keyset that contains a private key.
+	handle, err := keyset.NewHandle(signature.ECDSAP256KeyTemplate())
+	if err != nil {
+		t.Fatalf("keyset.NewHandle(signature.ECDSAP256KeyTemplate()) err = %v, want nil", err)
+	}
+	buff := &bytes.Buffer{}
+	err = testkeyset.Write(handle, keyset.NewBinaryWriter(buff))
+	if err != nil {
+		t.Fatalf("insecurecleartextkeyset.Write(handle, keyset.NewBinaryWriter(buff)) err = %v, want nil", err)
+	}
+	serialized := buff.Bytes()
+
+	_, err = keyset.ReadWithNoSecrets(keyset.NewBinaryReader(bytes.NewBuffer(serialized)))
+	if err == nil {
+		t.Error("keyset.ReadWithNoSecrets() = nil, want error")
 	}
 }
 
 func TestWriteAndReadWithNoSecretsFailsWithUnknownKeyMaterial(t *testing.T) {
-	// Create a keyset containing unknown key material
+	// Create a keyset that contains unknown key material.
 	keyData := testutil.NewKeyData("some type url", []byte{0}, tinkpb.KeyData_UNKNOWN_KEYMATERIAL)
 	key := testutil.NewKey(keyData, tinkpb.KeyStatusType_ENABLED, 1, tinkpb.OutputPrefixType_TINK)
 	ks := testutil.NewKeyset(1, []*tinkpb.Keyset_Key{key})
@@ -274,43 +304,12 @@ func TestWriteAndReadWithNoSecretsFailsWithUnknownKeyMaterial(t *testing.T) {
 	buff := &bytes.Buffer{}
 	err = handle.WriteWithNoSecrets(keyset.NewBinaryWriter(buff))
 	if err == nil {
-		t.Error("handle.WriteWithNoSecrets() should fail when exporting unknown key material")
+		t.Error("handle.WriteWithNoSecrets() = nil, want error")
 	}
 
 	_, err = keyset.ReadWithNoSecrets(keyset.NewBinaryReader(bytes.NewBuffer(serialized)))
 	if err == nil {
-		t.Error("keyset.ReadWithNoSecrets should fail when importing unknown key material")
-	}
-}
-
-func TestWriteWithNoSecretsFunctionsFailWithAsymmetricPrivateKeyMaterial(t *testing.T) {
-	// Create a keyset containing secret key material (asymmetric)
-	handle, err := keyset.NewHandle(signature.ECDSAP256KeyTemplate())
-	if err != nil {
-		t.Fatalf("keyset.NewHandle(signature.ECDSAP256KeyTemplate()) err = %v, want nil", err)
-	}
-
-	if err := handle.WriteWithNoSecrets(&keyset.MemReaderWriter{}); err == nil {
-		t.Error("handle.WriteWithNoSecrets() should fail when exporting secret key material")
-	}
-}
-
-func TestWithNoSecretsFunctionsFailWithAsymmetricPrivateKeyMaterial(t *testing.T) {
-	// Create a keyset containing secret key material (asymmetric)
-	handle, err := keyset.NewHandle(signature.ECDSAP256KeyTemplate())
-	if err != nil {
-		t.Fatalf("keyset.NewHandle(signature.ECDSAP256KeyTemplate()) err = %v, want nil", err)
-	}
-	buff := &bytes.Buffer{}
-	err = testkeyset.Write(handle, keyset.NewBinaryWriter(buff))
-	if err != nil {
-		t.Fatalf("insecurecleartextkeyset.Write(handle, keyset.NewBinaryWriter(buff)) err = %v, want nil", err)
-	}
-	serialized := buff.Bytes()
-
-	_, err = keyset.ReadWithNoSecrets(keyset.NewBinaryReader(bytes.NewBuffer(serialized)))
-	if err == nil {
-		t.Error("keyset.ReadWithNoSecrets should fail when importing secret key material")
+		t.Error("handle.ReadWithNoSecrets() = nil, want error")
 	}
 }
 

@@ -17,11 +17,13 @@
 #define TINK_INTERNAL_REGISTRY_IMPL_H_
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <initializer_list>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <typeindex>
 #include <typeinfo>
 #include <utility>
@@ -29,6 +31,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/meta/type_traits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -40,6 +43,8 @@
 #include "tink/core/key_type_manager.h"
 #include "tink/core/private_key_manager_impl.h"
 #include "tink/core/private_key_type_manager.h"
+#include "tink/core/template_util.h"
+#include "tink/input_stream.h"
 #include "tink/internal/fips_utils.h"
 #include "tink/internal/keyset_wrapper.h"
 #include "tink/internal/keyset_wrapper_impl.h"
@@ -50,6 +55,7 @@
 #include "tink/util/errors.h"
 #include "tink/util/protobuf_helper.h"
 #include "tink/util/status.h"
+#include "tink/util/statusor.h"
 #include "tink/util/validation.h"
 #include "proto/tink.pb.h"
 
@@ -119,10 +125,14 @@ class RegistryImpl {
       const google::crypto::tink::KeyData& key_data) const
       ABSL_LOCKS_EXCLUDED(maps_mutex_);
 
+  // NOLINTBEGIN(whitespace/line_length) (Formatted when commented in)
+  // TINK-PENDING-REMOVAL-IN-2.0.0-START
   template <class P>
   crypto::tink::util::StatusOr<std::unique_ptr<P>> GetPrimitive(
       absl::string_view type_url, const portable_proto::MessageLite& key) const
       ABSL_LOCKS_EXCLUDED(maps_mutex_);
+  // TINK-PENDING-REMOVAL-IN-2.0.0-END
+  // NOLINTEND(whitespace/line_length)
 
   crypto::tink::util::StatusOr<std::unique_ptr<google::crypto::tink::KeyData>>
   NewKeyData(const google::crypto::tink::KeyTemplate& key_template) const
@@ -391,6 +401,7 @@ class RegistryImpl {
     std::shared_ptr<void> keyset_wrapper_;
   };
 
+  // TINK-PENDING-REMOVAL-IN-2.0.0-START
   // All information for a given primitive label.
   struct LabelInfo {
     LabelInfo(std::shared_ptr<void> catalogue, std::type_index type_index,
@@ -406,6 +417,7 @@ class RegistryImpl {
     // TypeId name of the primitive for which this key was inserted.
     const std::string type_id_name;
   };
+  // TINK-PENDING-REMOVAL-IN-2.0.0-END
 
   template <class P>
   crypto::tink::util::StatusOr<const PrimitiveWrapper<P, P>*> GetLegacyWrapper()
@@ -442,8 +454,10 @@ class RegistryImpl {
   absl::flat_hash_map<std::type_index, std::unique_ptr<WrapperInfo>>
       primitive_to_wrapper_ ABSL_GUARDED_BY(maps_mutex_);
 
+  // TINK-PENDING-REMOVAL-IN-2.0.0-START
   absl::flat_hash_map<std::string, std::unique_ptr<LabelInfo>>
       name_to_catalogue_map_ ABSL_GUARDED_BY(maps_mutex_);
+  // TINK-PENDING-REMOVAL-IN-2.0.0-END
 
   mutable absl::Mutex monitoring_factory_mutex_;
   std::unique_ptr<crypto::tink::MonitoringClientFactory> monitoring_factory_
@@ -750,6 +764,8 @@ crypto::tink::util::StatusOr<std::unique_ptr<P>> RegistryImpl::GetPrimitive(
   return key_manager_result.status();
 }
 
+// NOLINTBEGIN(whitespace/line_length) (Formatted when commented in)
+// TINK-PENDING-REMOVAL-IN-2.0.0-START
 template <class P>
 crypto::tink::util::StatusOr<std::unique_ptr<P>> RegistryImpl::GetPrimitive(
     absl::string_view type_url, const portable_proto::MessageLite& key) const {
@@ -759,6 +775,8 @@ crypto::tink::util::StatusOr<std::unique_ptr<P>> RegistryImpl::GetPrimitive(
   }
   return key_manager_result.status();
 }
+// TINK-PENDING-REMOVAL-IN-2.0.0-END
+// NOLINTEND(whitespace/line_length)
 
 template <class P>
 crypto::tink::util::StatusOr<const PrimitiveWrapper<P, P>*>
