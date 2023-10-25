@@ -44,7 +44,9 @@ py_test(
         ":aead",
         requirement("absl-py"),
         "//tink:tink_python",
+        "//tink:cleartext_keyset_handle",
         "//tink/core",
+        "//tink/mac",
         "//tink/proto:aes_ctr_hmac_aead_py_pb2",
         "//tink/proto:aes_eax_py_pb2",
         "//tink/proto:aes_gcm_py_pb2",
@@ -134,6 +136,7 @@ py_test(
         requirement("absl-py"),
         "//tink:tink_python",
         "//tink/core",
+        "//tink/mac",
         "//tink/proto:aes_gcm_py_pb2",
     ],
 )

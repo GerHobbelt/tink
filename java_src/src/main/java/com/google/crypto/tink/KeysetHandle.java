@@ -749,10 +749,7 @@ public final class KeysetHandle {
    * {@code keyTemplate}.
    *
    * @throws GeneralSecurityException if the key template is invalid.
-   * @deprecated This method takes a KeyTemplate proto, which is an internal implementation detail.
-   *     Please use the generateNew method that takes a {@link KeyTemplate} POJO.
    */
-  @Deprecated /* Deprecation under consideration */
   public static final KeysetHandle generateNew(com.google.crypto.tink.proto.KeyTemplate keyTemplate)
       throws GeneralSecurityException {
     LegacyProtoParameters parameters =
@@ -837,14 +834,14 @@ public final class KeysetHandle {
   @SuppressWarnings("UnusedException")
   public static final KeysetHandle readNoSecret(KeysetReader reader)
       throws GeneralSecurityException, IOException {
+    byte[] serializedKeyset;
     try {
-      Keyset keyset = reader.read();
-      assertNoSecretKeyMaterial(keyset);
-      return KeysetHandle.fromKeyset(keyset);
+      serializedKeyset = reader.read().toByteArray();
     } catch (InvalidProtocolBufferException e) {
       // Do not propagate InvalidProtocolBufferException to guarantee no key material is leaked
       throw new GeneralSecurityException("invalid keyset");
     }
+    return readNoSecret(serializedKeyset);
   }
 
   /**
