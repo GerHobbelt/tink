@@ -22,15 +22,23 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 import com.google.crypto.tink.aead.AesCtrHmacAeadParameters;
 import com.google.crypto.tink.aead.AesEaxParameters;
 import com.google.crypto.tink.aead.AesGcmParameters;
+import com.google.crypto.tink.aead.AesGcmSivParameters;
 import com.google.crypto.tink.aead.ChaCha20Poly1305Parameters;
 import com.google.crypto.tink.aead.PredefinedAeadParameters;
 import com.google.crypto.tink.aead.XChaCha20Poly1305Parameters;
 import com.google.crypto.tink.config.TinkConfig;
+import com.google.crypto.tink.daead.AesSivParameters;
+import com.google.crypto.tink.daead.PredefinedDeterministicAeadParameters;
 import com.google.crypto.tink.internal.Util;
+import com.google.crypto.tink.mac.AesCmacParameters;
 import com.google.crypto.tink.mac.HmacParameters;
 import com.google.crypto.tink.mac.PredefinedMacParameters;
+import com.google.crypto.tink.prf.PredefinedPrfParameters;
 import com.google.crypto.tink.streamingaead.PredefinedStreamingAeadParameters;
+import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -71,156 +79,227 @@ public final class KeyTemplatesAsParametersTest {
     TinkConfig.register();
   }
 
+  private static final List<Pair> createTemplates() throws GeneralSecurityException {
+    List<Pair> result = new ArrayList<>();
+    // Aead
+    result.add(new Pair("AES128_GCM", PredefinedAeadParameters.AES128_GCM));
+    result.add(new Pair("AES256_GCM", PredefinedAeadParameters.AES256_GCM));
+    result.add(
+        new Pair(
+            "AES128_GCM_RAW",
+            AesGcmParameters.builder()
+                .setIvSizeBytes(12)
+                .setKeySizeBytes(16)
+                .setTagSizeBytes(16)
+                .setVariant(AesGcmParameters.Variant.NO_PREFIX)
+                .build()));
+    result.add(
+        new Pair(
+            "AES256_GCM_RAW",
+            AesGcmParameters.builder()
+                .setIvSizeBytes(12)
+                .setKeySizeBytes(32)
+                .setTagSizeBytes(16)
+                .setVariant(AesGcmParameters.Variant.NO_PREFIX)
+                .build()));
+    result.add(new Pair("AES128_EAX", PredefinedAeadParameters.AES128_EAX));
+    result.add(new Pair("AES256_EAX", PredefinedAeadParameters.AES256_EAX));
+    result.add(
+        new Pair(
+            "AES128_EAX_RAW",
+            AesEaxParameters.builder()
+                .setIvSizeBytes(16)
+                .setKeySizeBytes(16)
+                .setTagSizeBytes(16)
+                .setVariant(AesEaxParameters.Variant.NO_PREFIX)
+                .build()));
+    result.add(
+        new Pair(
+            "AES256_EAX_RAW",
+            AesEaxParameters.builder()
+                .setIvSizeBytes(16)
+                .setKeySizeBytes(32)
+                .setTagSizeBytes(16)
+                .setVariant(AesEaxParameters.Variant.NO_PREFIX)
+                .build()));
+    result.add(new Pair("AES128_CTR_HMAC_SHA256", PredefinedAeadParameters.AES128_CTR_HMAC_SHA256));
+    result.add(new Pair("AES256_CTR_HMAC_SHA256", PredefinedAeadParameters.AES256_CTR_HMAC_SHA256));
+    result.add(
+        new Pair(
+            "AES128_CTR_HMAC_SHA256_RAW",
+            AesCtrHmacAeadParameters.builder()
+                .setAesKeySizeBytes(16)
+                .setHmacKeySizeBytes(32)
+                .setTagSizeBytes(16)
+                .setIvSizeBytes(16)
+                .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
+                .setVariant(AesCtrHmacAeadParameters.Variant.NO_PREFIX)
+                .build()));
+    result.add(
+        new Pair(
+            "AES256_CTR_HMAC_SHA256_RAW",
+            AesCtrHmacAeadParameters.builder()
+                .setAesKeySizeBytes(32)
+                .setHmacKeySizeBytes(32)
+                .setTagSizeBytes(32)
+                .setIvSizeBytes(16)
+                .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
+                .setVariant(AesCtrHmacAeadParameters.Variant.NO_PREFIX)
+                .build()));
+    result.add(new Pair("CHACHA20_POLY1305", PredefinedAeadParameters.CHACHA20_POLY1305));
+    result.add(
+        new Pair(
+            "CHACHA20_POLY1305_RAW",
+            ChaCha20Poly1305Parameters.create(ChaCha20Poly1305Parameters.Variant.NO_PREFIX)));
+    result.add(new Pair("XCHACHA20_POLY1305", PredefinedAeadParameters.XCHACHA20_POLY1305));
+    result.add(
+        new Pair(
+            "XCHACHA20_POLY1305_RAW",
+            XChaCha20Poly1305Parameters.create(XChaCha20Poly1305Parameters.Variant.NO_PREFIX)));
+    // Mac
+    result.add(new Pair("HMAC_SHA256_128BITTAG", PredefinedMacParameters.HMAC_SHA256_128BITTAG));
+    result.add(
+        new Pair(
+            "HMAC_SHA256_128BITTAG_RAW",
+            HmacParameters.builder()
+                .setKeySizeBytes(32)
+                .setTagSizeBytes(16)
+                .setVariant(HmacParameters.Variant.NO_PREFIX)
+                .setHashType(HmacParameters.HashType.SHA256)
+                .build()));
+    result.add(
+        new Pair(
+            "HMAC_SHA256_256BITTAG_RAW",
+            HmacParameters.builder()
+                .setKeySizeBytes(32)
+                .setTagSizeBytes(32)
+                .setVariant(HmacParameters.Variant.NO_PREFIX)
+                .setHashType(HmacParameters.HashType.SHA256)
+                .build()));
+    result.add(
+        new Pair(
+            "HMAC_SHA512_128BITTAG",
+            HmacParameters.builder()
+                .setKeySizeBytes(64)
+                .setTagSizeBytes(16)
+                .setVariant(HmacParameters.Variant.TINK)
+                .setHashType(HmacParameters.HashType.SHA512)
+                .build()));
+    result.add(
+        new Pair(
+            "HMAC_SHA512_128BITTAG_RAW",
+            HmacParameters.builder()
+                .setKeySizeBytes(64)
+                .setTagSizeBytes(16)
+                .setVariant(HmacParameters.Variant.NO_PREFIX)
+                .setHashType(HmacParameters.HashType.SHA512)
+                .build()));
+    result.add(
+        new Pair(
+            "HMAC_SHA512_256BITTAG_RAW",
+            HmacParameters.builder()
+                .setKeySizeBytes(64)
+                .setTagSizeBytes(32)
+                .setVariant(HmacParameters.Variant.NO_PREFIX)
+                .setHashType(HmacParameters.HashType.SHA512)
+                .build()));
+    result.add(
+        new Pair(
+            "HMAC_SHA512_512BITTAG_RAW",
+            HmacParameters.builder()
+                .setKeySizeBytes(64)
+                .setTagSizeBytes(64)
+                .setVariant(HmacParameters.Variant.NO_PREFIX)
+                .setHashType(HmacParameters.HashType.SHA512)
+                .build()));
+    result.add(new Pair("HMAC_SHA256_256BITTAG", PredefinedMacParameters.HMAC_SHA256_256BITTAG));
+    result.add(new Pair("HMAC_SHA512_256BITTAG", PredefinedMacParameters.HMAC_SHA512_256BITTAG));
+    result.add(new Pair("HMAC_SHA512_512BITTAG", PredefinedMacParameters.HMAC_SHA512_512BITTAG));
+    result.add(new Pair("AES_CMAC", PredefinedMacParameters.AES_CMAC));
+    result.add(new Pair("AES256_CMAC", PredefinedMacParameters.AES_CMAC));
+    result.add(
+        new Pair(
+            "AES256_CMAC_RAW",
+            AesCmacParameters.builder()
+                .setKeySizeBytes(32)
+                .setTagSizeBytes(16)
+                .setVariant(AesCmacParameters.Variant.NO_PREFIX)
+                .build()));
+    // DeterministicAead
+    result.add(new Pair("AES256_SIV", PredefinedDeterministicAeadParameters.AES256_SIV));
+    result.add(
+        new Pair(
+            "AES256_SIV_RAW",
+            AesSivParameters.builder()
+                .setKeySizeBytes(64)
+                .setVariant(AesSivParameters.Variant.NO_PREFIX)
+                .build()));
+    // StreamingAead
+    result.add(
+        new Pair(
+            "AES128_CTR_HMAC_SHA256_4KB",
+            PredefinedStreamingAeadParameters.AES128_CTR_HMAC_SHA256_4KB));
+    result.add(
+        new Pair(
+            "AES128_CTR_HMAC_SHA256_1MB",
+            PredefinedStreamingAeadParameters.AES128_CTR_HMAC_SHA256_1MB));
+    result.add(
+        new Pair(
+            "AES256_CTR_HMAC_SHA256_4KB",
+            PredefinedStreamingAeadParameters.AES256_CTR_HMAC_SHA256_4KB));
+    result.add(
+        new Pair(
+            "AES256_CTR_HMAC_SHA256_1MB",
+            PredefinedStreamingAeadParameters.AES256_CTR_HMAC_SHA256_1MB));
+    result.add(
+        new Pair("AES128_GCM_HKDF_4KB", PredefinedStreamingAeadParameters.AES128_GCM_HKDF_4KB));
+    result.add(
+        new Pair("AES128_GCM_HKDF_1MB", PredefinedStreamingAeadParameters.AES128_GCM_HKDF_1MB));
+    result.add(
+        new Pair("AES256_GCM_HKDF_4KB", PredefinedStreamingAeadParameters.AES256_GCM_HKDF_4KB));
+    result.add(
+        new Pair("AES256_GCM_HKDF_1MB", PredefinedStreamingAeadParameters.AES256_GCM_HKDF_1MB));
+    // Prf
+    result.add(new Pair("HKDF_SHA256", PredefinedPrfParameters.HKDF_SHA256));
+    result.add(new Pair("HMAC_SHA256_PRF", PredefinedPrfParameters.HMAC_SHA256_PRF));
+    result.add(new Pair("HMAC_SHA512_PRF", PredefinedPrfParameters.HMAC_SHA512_PRF));
+    result.add(new Pair("AES256_CMAC_PRF", PredefinedPrfParameters.AES_CMAC_PRF));
+    result.add(new Pair("AES_CMAC_PRF", PredefinedPrfParameters.AES_CMAC_PRF));
+    if (Util.isAndroid()) {
+      result.add(
+          new Pair(
+              "AES128_GCM_SIV",
+              AesGcmSivParameters.builder()
+                  .setKeySizeBytes(16)
+                  .setVariant(AesGcmSivParameters.Variant.TINK)
+                  .build()));
+      result.add(
+          new Pair(
+              "AES128_GCM_SIV_RAW",
+              AesGcmSivParameters.builder()
+                  .setKeySizeBytes(16)
+                  .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+                  .build()));
+      result.add(
+          new Pair(
+              "AES256_GCM_SIV",
+              AesGcmSivParameters.builder()
+                  .setKeySizeBytes(32)
+                  .setVariant(AesGcmSivParameters.Variant.TINK)
+                  .build()));
+      result.add(
+          new Pair(
+              "AES256_GCM_SIV_RAW",
+              AesGcmSivParameters.builder()
+                  .setKeySizeBytes(32)
+                  .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+                  .build()));
+    }
+    return result;
+  }
+
   @DataPoints("EquivalentPairs")
-  public static final Pair[] TEMPLATES =
-      exceptionIsBug(
-          () ->
-              new Pair[] {
-                // Aead
-                new Pair("AES128_GCM", PredefinedAeadParameters.AES128_GCM),
-                new Pair("AES256_GCM", PredefinedAeadParameters.AES256_GCM),
-                new Pair(
-                    "AES128_GCM_RAW",
-                    AesGcmParameters.builder()
-                        .setIvSizeBytes(12)
-                        .setKeySizeBytes(16)
-                        .setTagSizeBytes(16)
-                        .setVariant(AesGcmParameters.Variant.NO_PREFIX)
-                        .build()),
-                new Pair(
-                    "AES256_GCM_RAW",
-                    AesGcmParameters.builder()
-                        .setIvSizeBytes(12)
-                        .setKeySizeBytes(32)
-                        .setTagSizeBytes(16)
-                        .setVariant(AesGcmParameters.Variant.NO_PREFIX)
-                        .build()),
-                new Pair("AES128_EAX", PredefinedAeadParameters.AES128_EAX),
-                new Pair("AES256_EAX", PredefinedAeadParameters.AES256_EAX),
-                new Pair(
-                    "AES128_EAX_RAW",
-                    AesEaxParameters.builder()
-                        .setIvSizeBytes(16)
-                        .setKeySizeBytes(16)
-                        .setTagSizeBytes(16)
-                        .setVariant(AesEaxParameters.Variant.NO_PREFIX)
-                        .build()),
-                new Pair(
-                    "AES256_EAX_RAW",
-                    AesEaxParameters.builder()
-                        .setIvSizeBytes(16)
-                        .setKeySizeBytes(32)
-                        .setTagSizeBytes(16)
-                        .setVariant(AesEaxParameters.Variant.NO_PREFIX)
-                        .build()),
-                new Pair("AES128_CTR_HMAC_SHA256", PredefinedAeadParameters.AES128_CTR_HMAC_SHA256),
-                new Pair("AES256_CTR_HMAC_SHA256", PredefinedAeadParameters.AES256_CTR_HMAC_SHA256),
-                new Pair(
-                    "AES128_CTR_HMAC_SHA256_RAW",
-                    AesCtrHmacAeadParameters.builder()
-                        .setAesKeySizeBytes(16)
-                        .setHmacKeySizeBytes(32)
-                        .setTagSizeBytes(16)
-                        .setIvSizeBytes(16)
-                        .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
-                        .setVariant(AesCtrHmacAeadParameters.Variant.NO_PREFIX)
-                        .build()),
-                new Pair(
-                    "AES256_CTR_HMAC_SHA256_RAW",
-                    AesCtrHmacAeadParameters.builder()
-                        .setAesKeySizeBytes(32)
-                        .setHmacKeySizeBytes(32)
-                        .setTagSizeBytes(32)
-                        .setIvSizeBytes(16)
-                        .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
-                        .setVariant(AesCtrHmacAeadParameters.Variant.NO_PREFIX)
-                        .build()),
-                new Pair("CHACHA20_POLY1305", PredefinedAeadParameters.CHACHA20_POLY1305),
-                new Pair(
-                    "CHACHA20_POLY1305_RAW",
-                    ChaCha20Poly1305Parameters.create(
-                        ChaCha20Poly1305Parameters.Variant.NO_PREFIX)),
-                new Pair("XCHACHA20_POLY1305", PredefinedAeadParameters.XCHACHA20_POLY1305),
-                new Pair(
-                    "XCHACHA20_POLY1305_RAW",
-                    XChaCha20Poly1305Parameters.create(
-                        XChaCha20Poly1305Parameters.Variant.NO_PREFIX)),
-                // Mac
-                new Pair("HMAC_SHA256_128BITTAG", PredefinedMacParameters.HMAC_SHA256_128BITTAG),
-                new Pair(
-                    "HMAC_SHA256_128BITTAG_RAW",
-                    HmacParameters.builder()
-                        .setKeySizeBytes(32)
-                        .setTagSizeBytes(16)
-                        .setVariant(HmacParameters.Variant.NO_PREFIX)
-                        .setHashType(HmacParameters.HashType.SHA256)
-                        .build()),
-                new Pair(
-                    "HMAC_SHA256_256BITTAG_RAW",
-                    HmacParameters.builder()
-                        .setKeySizeBytes(32)
-                        .setTagSizeBytes(32)
-                        .setVariant(HmacParameters.Variant.NO_PREFIX)
-                        .setHashType(HmacParameters.HashType.SHA256)
-                        .build()),
-                new Pair(
-                    "HMAC_SHA512_128BITTAG",
-                    HmacParameters.builder()
-                        .setKeySizeBytes(64)
-                        .setTagSizeBytes(16)
-                        .setVariant(HmacParameters.Variant.TINK)
-                        .setHashType(HmacParameters.HashType.SHA512)
-                        .build()),
-                new Pair(
-                    "HMAC_SHA512_128BITTAG_RAW",
-                    HmacParameters.builder()
-                        .setKeySizeBytes(64)
-                        .setTagSizeBytes(16)
-                        .setVariant(HmacParameters.Variant.NO_PREFIX)
-                        .setHashType(HmacParameters.HashType.SHA512)
-                        .build()),
-                new Pair(
-                    "HMAC_SHA512_256BITTAG_RAW",
-                    HmacParameters.builder()
-                        .setKeySizeBytes(64)
-                        .setTagSizeBytes(32)
-                        .setVariant(HmacParameters.Variant.NO_PREFIX)
-                        .setHashType(HmacParameters.HashType.SHA512)
-                        .build()),
-                new Pair(
-                    "HMAC_SHA512_512BITTAG_RAW",
-                    HmacParameters.builder()
-                        .setKeySizeBytes(64)
-                        .setTagSizeBytes(64)
-                        .setVariant(HmacParameters.Variant.NO_PREFIX)
-                        .setHashType(HmacParameters.HashType.SHA512)
-                        .build()),
-                new Pair("HMAC_SHA256_256BITTAG", PredefinedMacParameters.HMAC_SHA256_256BITTAG),
-                new Pair("HMAC_SHA512_256BITTAG", PredefinedMacParameters.HMAC_SHA512_256BITTAG),
-                new Pair("HMAC_SHA512_512BITTAG", PredefinedMacParameters.HMAC_SHA512_512BITTAG),
-                new Pair("AES_CMAC", PredefinedMacParameters.AES_CMAC),
-                // StreamingAead
-                new Pair(
-                    "AES128_CTR_HMAC_SHA256_4KB",
-                    PredefinedStreamingAeadParameters.AES128_CTR_HMAC_SHA256_4KB),
-                new Pair(
-                    "AES128_CTR_HMAC_SHA256_1MB",
-                    PredefinedStreamingAeadParameters.AES128_CTR_HMAC_SHA256_1MB),
-                new Pair(
-                    "AES256_CTR_HMAC_SHA256_4KB",
-                    PredefinedStreamingAeadParameters.AES256_CTR_HMAC_SHA256_4KB),
-                new Pair(
-                    "AES256_CTR_HMAC_SHA256_1MB",
-                    PredefinedStreamingAeadParameters.AES256_CTR_HMAC_SHA256_1MB),
-                new Pair(
-                    "AES128_GCM_HKDF_4KB", PredefinedStreamingAeadParameters.AES128_GCM_HKDF_4KB),
-                new Pair(
-                    "AES128_GCM_HKDF_1MB", PredefinedStreamingAeadParameters.AES128_GCM_HKDF_1MB),
-                new Pair(
-                    "AES256_GCM_HKDF_4KB", PredefinedStreamingAeadParameters.AES256_GCM_HKDF_4KB),
-                new Pair(
-                    "AES256_GCM_HKDF_1MB", PredefinedStreamingAeadParameters.AES256_GCM_HKDF_1MB),
-              });
+  public static final List<Pair> templates = exceptionIsBug(() -> createTemplates());
 
   @Theory
   public void testParametersEqualsKeyTemplate(@FromDataPoints("EquivalentPairs") Pair p)
@@ -230,7 +309,7 @@ public final class KeyTemplatesAsParametersTest {
 
   private static Set<String> getAllTestedNames() {
     Set<String> result = new HashSet<>();
-    for (Pair p : TEMPLATES) {
+    for (Pair p : templates) {
       result.add(p.templateName);
     }
     return result;
@@ -238,12 +317,6 @@ public final class KeyTemplatesAsParametersTest {
 
   private static Set<String> getUntestedNames() {
     Set<String> result = new HashSet<>();
-    result.add("AES256_CMAC");
-    result.add("AES256_CMAC_PRF");
-    result.add("AES256_CMAC_RAW");
-    result.add("AES256_SIV");
-    result.add("AES256_SIV_RAW");
-    result.add("AES_CMAC_PRF");
     result.add("DHKEM_P256_HKDF_SHA256_HKDF_SHA256_AES_128_GCM");
     result.add("DHKEM_P256_HKDF_SHA256_HKDF_SHA256_AES_128_GCM_RAW");
     result.add("DHKEM_P256_HKDF_SHA256_HKDF_SHA256_AES_256_GCM");
@@ -284,9 +357,6 @@ public final class KeyTemplatesAsParametersTest {
     result.add("ED25519");
     result.add("ED25519_RAW");
     result.add("ED25519WithRawOutput");
-    result.add("HKDF_SHA256");
-    result.add("HMAC_SHA256_PRF");
-    result.add("HMAC_SHA512_PRF");
     result.add("RSA_SSA_PKCS1_3072_SHA256_F4");
     result.add("RSA_SSA_PKCS1_3072_SHA256_F4_RAW");
     result.add("RSA_SSA_PKCS1_3072_SHA256_F4_WITHOUT_PREFIX");
@@ -298,13 +368,6 @@ public final class KeyTemplatesAsParametersTest {
     result.add("RSA_SSA_PSS_4096_SHA512_F4");
     result.add("RSA_SSA_PSS_4096_SHA512_F4_RAW");
     result.add("RSA_SSA_PSS_4096_SHA512_SHA512_64_F4");
-    if (Util.isAndroid()) {
-      result.add("AES128_GCM_SIV");
-      result.add("AES128_GCM_SIV_RAW");
-      result.add("AES256_GCM_SIV");
-      result.add("AES256_GCM_SIV_RAW");
-    }
-
     return result;
   }
 
