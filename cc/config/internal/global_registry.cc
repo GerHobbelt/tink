@@ -14,20 +14,25 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef TINK_CONFIG_KEY_GEN_FIPS_140_2_H_
-#define TINK_CONFIG_KEY_GEN_FIPS_140_2_H_
+#include "tink/config/internal/global_registry.h"
 
+#include "absl/log/check.h"
+#include "tink/internal/key_gen_configuration_impl.h"
 #include "tink/key_gen_configuration.h"
 
 namespace crypto {
 namespace tink {
+namespace internal {
 
-// KeyGenConfiguration used to generate keys using FIPS 140-2-compliant key
-// types. Importing this KeyGenConfiguration restricts Tink to FIPS globally and
-// requires BoringSSL to be built with the BoringCrypto module.
-const KeyGenConfiguration& KeyGenConfigFips140_2();
+const KeyGenConfiguration& KeyGenConfigGlobalRegistry() {
+  static const KeyGenConfiguration* instance = [] {
+    static KeyGenConfiguration* config = new KeyGenConfiguration();
+    CHECK_OK(KeyGenConfigurationImpl::SetGlobalRegistryMode(*config));
+    return config;
+  }();
+  return *instance;
+}
 
+}  // namespace internal
 }  // namespace tink
 }  // namespace crypto
-
-#endif  // TINK_CONFIG_KEY_GEN_FIPS_140_2_H_

@@ -21,7 +21,10 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/status/status.h"
+#include "tink/cleartext_keyset_handle.h"
 #include "tink/configuration.h"
+#include "tink/internal/keyset_wrapper_store.h"
 #include "tink/subtle/random.h"
 #include "tink/util/test_matchers.h"
 #include "tink/util/test_util.h"
@@ -150,29 +153,31 @@ std::string AddAesGcmKeyToKeyset(Keyset& keyset, uint32_t key_id,
   return key.key_value();
 }
 
-TEST(ConfigurationImplTest, RegisterPrimitiveWrapper) {
+TEST(ConfigurationImplTest, AddPrimitiveWrapper) {
   Configuration config;
-  EXPECT_THAT((ConfigurationImpl::RegisterPrimitiveWrapper(
+  EXPECT_THAT((ConfigurationImpl::AddPrimitiveWrapper(
                   absl::make_unique<FakePrimitiveWrapper>(), config)),
               IsOk());
 }
 
-TEST(ConfigurationImplTest, RegisterKeyTypeManager) {
+TEST(ConfigurationImplTest, AddKeyTypeManager) {
   Configuration config;
-  EXPECT_THAT(ConfigurationImpl::RegisterKeyTypeManager(
+  EXPECT_THAT(ConfigurationImpl::AddKeyTypeManager(
                   absl::make_unique<FakeKeyTypeManager>(), config),
               IsOk());
 }
 
 TEST(ConfigurationImplTest, GetKeyTypeInfoStore) {
   Configuration config;
-  ASSERT_THAT(ConfigurationImpl::RegisterKeyTypeManager(
+  ASSERT_THAT(ConfigurationImpl::AddKeyTypeManager(
                   absl::make_unique<FakeKeyTypeManager>(), config),
               IsOk());
 
   std::string type_url = FakeKeyTypeManager().get_key_type();
-  util::StatusOr<const KeyTypeInfoStore::Info*> info =
-      ConfigurationImpl::GetKeyTypeInfoStore(config).Get(type_url);
+  util::StatusOr<const KeyTypeInfoStore*> store =
+      ConfigurationImpl::GetKeyTypeInfoStore(config);
+  ASSERT_THAT(store, IsOk());
+  util::StatusOr<const KeyTypeInfoStore::Info*> info = (*store)->Get(type_url);
   ASSERT_THAT(info, IsOk());
 
   util::StatusOr<const KeyManager<FakePrimitive>*> key_manager =
@@ -183,23 +188,27 @@ TEST(ConfigurationImplTest, GetKeyTypeInfoStore) {
 
 TEST(ConfigurationImplTest, GetKeyTypeInfoStoreMissingInfoFails) {
   Configuration config;
-  EXPECT_THAT(ConfigurationImpl::GetKeyTypeInfoStore(config)
-                  .Get("i.do.not.exist")
-                  .status(),
+  util::StatusOr<const KeyTypeInfoStore*> store =
+      ConfigurationImpl::GetKeyTypeInfoStore(config);
+  ASSERT_THAT(store, IsOk());
+  EXPECT_THAT((*store)->Get("i.do.not.exist").status(),
               StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ConfigurationImplTest, GetKeysetWrapperStoreAndWrap) {
   Configuration config;
-  ASSERT_THAT((ConfigurationImpl::RegisterPrimitiveWrapper(
+  ASSERT_THAT((ConfigurationImpl::AddPrimitiveWrapper(
                   absl::make_unique<FakePrimitiveWrapper>(), config)),
               IsOk());
-  ASSERT_THAT(ConfigurationImpl::RegisterKeyTypeManager(
+  ASSERT_THAT(ConfigurationImpl::AddKeyTypeManager(
                   absl::make_unique<FakeKeyTypeManager>(), config),
               IsOk());
 
+  util::StatusOr<const KeysetWrapperStore*> store =
+      ConfigurationImpl::GetKeysetWrapperStore(config);
+  ASSERT_THAT(store, IsOk());
   util::StatusOr<const KeysetWrapper<FakePrimitive>*> wrapper =
-      ConfigurationImpl::GetKeysetWrapperStore(config).Get<FakePrimitive>();
+      (*store)->Get<FakePrimitive>();
   ASSERT_THAT(wrapper, IsOk());
 
   Keyset keyset;
@@ -215,12 +224,15 @@ TEST(ConfigurationImplTest, GetKeysetWrapperStoreAndWrap) {
 
 TEST(ConfigurationImplTest, KeysetWrapperWrapMissingKeyTypeInfoFails) {
   Configuration config;
-  ASSERT_THAT((ConfigurationImpl::RegisterPrimitiveWrapper(
-                  absl::make_unique<FakePrimitiveWrapper>(), config)),
+  ASSERT_THAT(ConfigurationImpl::AddPrimitiveWrapper(
+                  absl::make_unique<FakePrimitiveWrapper>(), config),
               IsOk());
 
+  util::StatusOr<const KeysetWrapperStore*> store =
+      ConfigurationImpl::GetKeysetWrapperStore(config);
+  ASSERT_THAT(store, IsOk());
   util::StatusOr<const KeysetWrapper<FakePrimitive>*> wrapper =
-      ConfigurationImpl::GetKeysetWrapperStore(config).Get<FakePrimitive>();
+      (*store)->Get<FakePrimitive>();
   ASSERT_THAT(wrapper, IsOk());
 
   Keyset keyset;
@@ -235,20 +247,22 @@ TEST(ConfigurationImplTest, KeysetWrapperWrapMissingKeyTypeInfoFails) {
 TEST(ConfigurationImplTest, KeysetWrapperWrapMissingKeyManagerFails) {
   Configuration config;
   // Transforms FakePrimitive2 to FakePrimitive.
-  ASSERT_THAT((ConfigurationImpl::RegisterPrimitiveWrapper(
+  ASSERT_THAT((ConfigurationImpl::AddPrimitiveWrapper(
                   absl::make_unique<FakePrimitiveWrapper2>(), config)),
               IsOk());
   // Transforms KeyData to FakePrimitive.
-  ASSERT_THAT(ConfigurationImpl::RegisterKeyTypeManager(
+  ASSERT_THAT(ConfigurationImpl::AddKeyTypeManager(
                   absl::make_unique<FakeKeyTypeManager>(), config),
               IsOk());
 
   // AesGcmKey KeyData -> FakePrimitive2 -> FakePrimitive is the success path,
   // but the AesGcmKey KeyData -> FakePrimitive2 transformation is not
   // registered.
-
+  util::StatusOr<const KeysetWrapperStore*> store =
+      ConfigurationImpl::GetKeysetWrapperStore(config);
+  ASSERT_THAT(store, IsOk());
   util::StatusOr<const KeysetWrapper<FakePrimitive>*> wrapper =
-      ConfigurationImpl::GetKeysetWrapperStore(config).Get<FakePrimitive>();
+      (*store)->Get<FakePrimitive>();
   ASSERT_THAT(wrapper, IsOk());
 
   Keyset keyset;
@@ -348,9 +362,9 @@ class FakeVerifyKeyManager
   const std::string key_type_ = "some.verify.key.type";
 };
 
-TEST(ConfigurationImplTest, RegisterAsymmetricKeyManagers) {
+TEST(ConfigurationImplTest, AddAsymmetricKeyManagers) {
   Configuration config;
-  EXPECT_THAT(ConfigurationImpl::RegisterAsymmetricKeyManagers(
+  EXPECT_THAT(ConfigurationImpl::AddAsymmetricKeyManagers(
                   absl::make_unique<FakeSignKeyManager>(),
                   absl::make_unique<FakeVerifyKeyManager>(), config),
               IsOk());
@@ -358,15 +372,18 @@ TEST(ConfigurationImplTest, RegisterAsymmetricKeyManagers) {
 
 TEST(ConfigurationImplTest, GetKeyTypeInfoStoreAsymmetric) {
   Configuration config;
-  ASSERT_THAT(ConfigurationImpl::RegisterAsymmetricKeyManagers(
+  ASSERT_THAT(ConfigurationImpl::AddAsymmetricKeyManagers(
                   absl::make_unique<FakeSignKeyManager>(),
                   absl::make_unique<FakeVerifyKeyManager>(), config),
               IsOk());
 
   {
     std::string type_url = FakeSignKeyManager().get_key_type();
+    util::StatusOr<const KeyTypeInfoStore*> store =
+        ConfigurationImpl::GetKeyTypeInfoStore(config);
+    ASSERT_THAT(store, IsOk());
     util::StatusOr<const KeyTypeInfoStore::Info*> info =
-        ConfigurationImpl::GetKeyTypeInfoStore(config).Get(type_url);
+        (*store)->Get(type_url);
     ASSERT_THAT(info, IsOk());
 
     util::StatusOr<const KeyManager<PublicKeySign>*> key_manager =
@@ -376,8 +393,11 @@ TEST(ConfigurationImplTest, GetKeyTypeInfoStoreAsymmetric) {
   }
   {
     std::string type_url = FakeVerifyKeyManager().get_key_type();
+    util::StatusOr<const KeyTypeInfoStore*> store =
+        ConfigurationImpl::GetKeyTypeInfoStore(config);
+    ASSERT_THAT(store, IsOk());
     util::StatusOr<const KeyTypeInfoStore::Info*> info =
-        ConfigurationImpl::GetKeyTypeInfoStore(config).Get(type_url);
+        (*store)->Get(type_url);
     ASSERT_THAT(info, IsOk());
 
     util::StatusOr<const KeyManager<PublicKeyVerify>*> key_manager =
@@ -385,6 +405,59 @@ TEST(ConfigurationImplTest, GetKeyTypeInfoStoreAsymmetric) {
     ASSERT_THAT(key_manager, IsOk());
     EXPECT_EQ((*key_manager)->get_key_type(), type_url);
   }
+}
+
+TEST(ConfigurationImplTest, GlobalRegistryMode) {
+  Registry::Reset();
+  Configuration config;
+  ASSERT_THAT(ConfigurationImpl::SetGlobalRegistryMode(config), IsOk());
+  EXPECT_TRUE(ConfigurationImpl::GetGlobalRegistryMode(config));
+
+  // Check that ConfigurationImpl functions return kFailedPrecondition.
+  EXPECT_THAT(ConfigurationImpl::AddPrimitiveWrapper(
+                  absl::make_unique<FakePrimitiveWrapper>(), config),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(ConfigurationImpl::AddKeyTypeManager(
+                  absl::make_unique<FakeKeyTypeManager>(), config),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(ConfigurationImpl::AddAsymmetricKeyManagers(
+                  absl::make_unique<FakeSignKeyManager>(),
+                  absl::make_unique<FakeVerifyKeyManager>(), config),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(ConfigurationImpl::GetKeyTypeInfoStore(config).status(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(ConfigurationImpl::GetKeysetWrapperStore(config).status(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  Keyset keyset;
+  std::string raw_key = AddAesGcmKeyToKeyset(
+      keyset, /*key_id=*/13, OutputPrefixType::TINK, KeyStatusType::ENABLED);
+  keyset.set_primary_key_id(13);
+  std::unique_ptr<KeysetHandle> handle =
+      CleartextKeysetHandle::GetKeysetHandle(keyset);
+  // TODO(b/265705174): Replace with GetPrimitive(config) once implemented.
+  EXPECT_THAT(handle->GetPrimitive<FakePrimitive>().status(),
+              StatusIs(absl::StatusCode::kNotFound));
+
+  ASSERT_THAT(Registry::RegisterPrimitiveWrapper(
+                  absl::make_unique<FakePrimitiveWrapper>()),
+              IsOk());
+  ASSERT_THAT(
+      Registry::RegisterKeyTypeManager(absl::make_unique<FakeKeyTypeManager>(),
+                                       /*new_key_allowed=*/true),
+      IsOk());
+  // TODO(b/265705174): Replace with GetPrimitive(config) once implemented.
+  EXPECT_THAT(handle->GetPrimitive<FakePrimitive>(), IsOk());
+}
+
+TEST(ConfigurationImplTest, GlobalRegistryModeWithNonEmptyConfigFails) {
+  Configuration config;
+  ASSERT_THAT(ConfigurationImpl::AddPrimitiveWrapper(
+                  absl::make_unique<FakePrimitiveWrapper>(), config),
+              IsOk());
+  EXPECT_THAT(ConfigurationImpl::SetGlobalRegistryMode(config),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_FALSE(ConfigurationImpl::GetGlobalRegistryMode(config));
 }
 
 }  // namespace

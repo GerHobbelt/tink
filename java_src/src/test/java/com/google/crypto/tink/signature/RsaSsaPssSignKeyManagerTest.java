@@ -21,6 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.PublicKeySign;
 import com.google.crypto.tink.PublicKeyVerify;
 import com.google.crypto.tink.internal.KeyTypeManager;
@@ -46,6 +47,7 @@ import java.security.spec.RSAKeyGenParameterSpec;
 import java.security.spec.RSAPublicKeySpec;
 import java.util.Set;
 import java.util.TreeSet;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -56,6 +58,11 @@ public class RsaSsaPssSignKeyManagerTest {
   private final RsaSsaPssSignKeyManager manager = new RsaSsaPssSignKeyManager();
   private final KeyTypeManager.KeyFactory<RsaSsaPssKeyFormat, RsaSsaPssPrivateKey> factory =
       manager.keyFactory();
+
+  @BeforeClass
+  public static void beforeClass() throws Exception {
+    RsaSsaPssSignKeyManager.registerPair(/* newKeyAllowed= */ true);
+  }
 
   private static RsaSsaPssKeyFormat createKeyFormat(
       HashType sigHash,
@@ -178,17 +185,30 @@ public class RsaSsaPssSignKeyManagerTest {
   }
 
   @Test
-  public void createKey_smallKey() throws Exception {
+  public void createSmallKeyUsingParameters_works() throws Exception {
     if (TestUtil.isTsan()) {
       // factory.createKey is too slow in Tsan.
       return;
     }
-    RsaSsaPssKeyFormat format =
-        createKeyFormat(HashType.SHA256, HashType.SHA256, 32, 3072, RSAKeyGenParameterSpec.F4);
-    RsaSsaPssPrivateKey key = factory.createKey(format);
-    checkConsistency(key, format);
-    checkKey(key);
+    RsaSsaPssParameters parameters =
+        RsaSsaPssParameters.builder()
+            .setModulusSizeBits(3072)
+            .setPublicExponent(RsaSsaPssParameters.F4)
+            .setSigHashType(RsaSsaPssParameters.HashType.SHA256)
+            .setMgf1HashType(RsaSsaPssParameters.HashType.SHA256)
+            .setVariant(RsaSsaPssParameters.Variant.NO_PREFIX)
+            .setSaltLengthBytes(32)
+            .build();
+    KeysetHandle handle = KeysetHandle.generateNew(parameters);
+    com.google.crypto.tink.Key key = handle.getAt(0).getKey();
+    assertThat(key).isInstanceOf(com.google.crypto.tink.signature.RsaSsaPssPrivateKey.class);
+    com.google.crypto.tink.signature.RsaSsaPssPrivateKey privateKey =
+        (com.google.crypto.tink.signature.RsaSsaPssPrivateKey) key;
+
+    assertThat(privateKey.getPublicKey().getParameters()).isEqualTo(parameters);
+    assertThat(privateKey.getPublicKey().getModulus().bitLength()).isEqualTo(3072);
   }
+
 
   @Test
   public void createKey_largeKey() throws Exception {
@@ -299,69 +319,61 @@ public class RsaSsaPssSignKeyManagerTest {
   @Test
   public void testRsa3072PssSha256F4Template() throws Exception {
     KeyTemplate template = RsaSsaPssSignKeyManager.rsa3072PssSha256F4Template();
-    assertThat(template.getTypeUrl()).isEqualTo(new RsaSsaPssSignKeyManager().getKeyType());
-    assertThat(template.getOutputPrefixType()).isEqualTo(KeyTemplate.OutputPrefixType.TINK);
-    RsaSsaPssKeyFormat format =
-        RsaSsaPssKeyFormat.parseFrom(template.getValue(), ExtensionRegistryLite.getEmptyRegistry());
-
-    assertThat(format.hasParams()).isTrue();
-    assertThat(format.getParams().getSigHash()).isEqualTo(HashType.SHA256);
-    assertThat(format.getParams().getMgf1Hash()).isEqualTo(HashType.SHA256);
-    assertThat(format.getParams().getSaltLength()).isEqualTo(32);
-    assertThat(format.getModulusSizeInBits()).isEqualTo(3072);
-    assertThat(new BigInteger(1, format.getPublicExponent().toByteArray()))
-        .isEqualTo(BigInteger.valueOf(65537));
+    assertThat(template.toParameters())
+        .isEqualTo(
+            RsaSsaPssParameters.builder()
+                .setSigHashType(RsaSsaPssParameters.HashType.SHA256)
+                .setMgf1HashType(RsaSsaPssParameters.HashType.SHA256)
+                .setSaltLengthBytes(32)
+                .setModulusSizeBits(3072)
+                .setPublicExponent(RsaSsaPssParameters.F4)
+                .setVariant(RsaSsaPssParameters.Variant.TINK)
+                .build());
   }
 
   @Test
   public void testRawRsa3072PssSha256F4Template() throws Exception {
     KeyTemplate template = RsaSsaPssSignKeyManager.rawRsa3072PssSha256F4Template();
-    assertThat(template.getTypeUrl()).isEqualTo(new RsaSsaPssSignKeyManager().getKeyType());
-    assertThat(template.getOutputPrefixType()).isEqualTo(KeyTemplate.OutputPrefixType.RAW);
-    RsaSsaPssKeyFormat format =
-        RsaSsaPssKeyFormat.parseFrom(template.getValue(), ExtensionRegistryLite.getEmptyRegistry());
-
-    assertThat(format.hasParams()).isTrue();
-    assertThat(format.getParams().getSigHash()).isEqualTo(HashType.SHA256);
-    assertThat(format.getParams().getMgf1Hash()).isEqualTo(HashType.SHA256);
-    assertThat(format.getParams().getSaltLength()).isEqualTo(32);
-    assertThat(format.getModulusSizeInBits()).isEqualTo(3072);
-    assertThat(new BigInteger(1, format.getPublicExponent().toByteArray()))
-        .isEqualTo(BigInteger.valueOf(65537));
+    assertThat(template.toParameters())
+        .isEqualTo(
+            RsaSsaPssParameters.builder()
+                .setSigHashType(RsaSsaPssParameters.HashType.SHA256)
+                .setMgf1HashType(RsaSsaPssParameters.HashType.SHA256)
+                .setSaltLengthBytes(32)
+                .setModulusSizeBits(3072)
+                .setPublicExponent(RsaSsaPssParameters.F4)
+                .setVariant(RsaSsaPssParameters.Variant.NO_PREFIX)
+                .build());
   }
 
   @Test
   public void testRsa4096PssSha512F4Template() throws Exception {
     KeyTemplate template = RsaSsaPssSignKeyManager.rsa4096PssSha512F4Template();
-    assertThat(template.getTypeUrl()).isEqualTo(new RsaSsaPssSignKeyManager().getKeyType());
-    assertThat(template.getOutputPrefixType()).isEqualTo(KeyTemplate.OutputPrefixType.TINK);
-    RsaSsaPssKeyFormat format =
-        RsaSsaPssKeyFormat.parseFrom(template.getValue(), ExtensionRegistryLite.getEmptyRegistry());
-
-    assertThat(format.hasParams()).isTrue();
-    assertThat(format.getParams().getSigHash()).isEqualTo(HashType.SHA512);
-    assertThat(format.getParams().getMgf1Hash()).isEqualTo(HashType.SHA512);
-    assertThat(format.getParams().getSaltLength()).isEqualTo(64);
-    assertThat(format.getModulusSizeInBits()).isEqualTo(4096);
-    assertThat(new BigInteger(1, format.getPublicExponent().toByteArray()))
-        .isEqualTo(BigInteger.valueOf(65537));
+    assertThat(template.toParameters())
+        .isEqualTo(
+            RsaSsaPssParameters.builder()
+                .setSigHashType(RsaSsaPssParameters.HashType.SHA512)
+                .setMgf1HashType(RsaSsaPssParameters.HashType.SHA512)
+                .setSaltLengthBytes(64)
+                .setModulusSizeBits(4096)
+                .setPublicExponent(RsaSsaPssParameters.F4)
+                .setVariant(RsaSsaPssParameters.Variant.TINK)
+                .build());
   }
 
   @Test
   public void testRawRsa4096PssSha512F4Template() throws Exception {
     KeyTemplate template = RsaSsaPssSignKeyManager.rawRsa4096PssSha512F4Template();
-    assertThat(template.getTypeUrl()).isEqualTo(new RsaSsaPssSignKeyManager().getKeyType());
-    assertThat(template.getOutputPrefixType()).isEqualTo(KeyTemplate.OutputPrefixType.RAW);
-    RsaSsaPssKeyFormat format =
-        RsaSsaPssKeyFormat.parseFrom(template.getValue(), ExtensionRegistryLite.getEmptyRegistry());
-
-    assertThat(format.hasParams()).isTrue();
-    assertThat(format.getParams().getSigHash()).isEqualTo(HashType.SHA512);
-    assertThat(format.getParams().getMgf1Hash()).isEqualTo(HashType.SHA512);
-    assertThat(format.getParams().getSaltLength()).isEqualTo(64);
-    assertThat(format.getModulusSizeInBits()).isEqualTo(4096);
-    assertThat(new BigInteger(1, format.getPublicExponent().toByteArray()))
-        .isEqualTo(BigInteger.valueOf(65537));
+    assertThat(template.toParameters())
+        .isEqualTo(
+            RsaSsaPssParameters.builder()
+                .setSigHashType(RsaSsaPssParameters.HashType.SHA512)
+                .setMgf1HashType(RsaSsaPssParameters.HashType.SHA512)
+                .setSaltLengthBytes(64)
+                .setModulusSizeBits(4096)
+                .setPublicExponent(RsaSsaPssParameters.F4)
+                .setVariant(RsaSsaPssParameters.Variant.NO_PREFIX)
+                .build());
   }
 
   @Test

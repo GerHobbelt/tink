@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//      http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,20 +14,18 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef TINK_CONFIG_KEY_GEN_FIPS_140_2_H_
-#define TINK_CONFIG_KEY_GEN_FIPS_140_2_H_
+#ifndef TINK_DAEAD_AES_SIV_PROTO_SERIALIZATION_H_
+#define TINK_DAEAD_AES_SIV_PROTO_SERIALIZATION_H_
 
-#include "tink/key_gen_configuration.h"
+#include "tink/util/status.h"
 
 namespace crypto {
 namespace tink {
 
-// KeyGenConfiguration used to generate keys using FIPS 140-2-compliant key
-// types. Importing this KeyGenConfiguration restricts Tink to FIPS globally and
-// requires BoringSSL to be built with the BoringCrypto module.
-const KeyGenConfiguration& KeyGenConfigFips140_2();
+// Registers proto parsers and serializers for AES-SIV parameters and keys.
+crypto::tink::util::Status RegisterAesSivProtoSerialization();
 
 }  // namespace tink
 }  // namespace crypto
 
-#endif  // TINK_CONFIG_KEY_GEN_FIPS_140_2_H_
+#endif  // TINK_DAEAD_AES_SIV_PROTO_SERIALIZATION_H_
