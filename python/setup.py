@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from distutils import spawn
 import glob
 import os
 import posixpath
@@ -51,9 +50,9 @@ _TINK_VERSION = _get_tink_version()
 
 def _get_bazel_command():
   """Finds the bazel command."""
-  if spawn.find_executable('bazelisk'):
+  if shutil.which('bazelisk'):
     return 'bazelisk'
-  elif spawn.find_executable('bazel'):
+  elif shutil.which('bazel'):
     return 'bazel'
   raise FileNotFoundError('Could not find bazel executable. Please install '
                           'bazel to compile the Tink Python package.')
@@ -63,10 +62,11 @@ def _get_protoc_command():
   """Finds the protoc command."""
   if 'PROTOC' in os.environ and os.path.exists(os.environ['PROTOC']):
     return os.environ['PROTOC']
-  else:
-    return spawn.find_executable('protoc')
-  raise FileNotFoundError('Could not find protoc executable. Please install '
-                          'protoc to compile the Tink Python package.')
+  protoc_path = shutil.which('protoc')
+  if protoc_path is None:
+    raise FileNotFoundError('Could not find protoc executable. Please install '
+                            'protoc to compile the Tink Python package.')
+  return protoc_path
 
 
 def _generate_proto(protoc, source):
@@ -153,8 +153,10 @@ def _patch_with_http_archive(workspace_content, filename, prefix):
   workspace_lines = workspace_content.split('\n')
   http_archive_load = ('load("@bazel_tools//tools/build_defs/repo:http.bzl", '
                        '"http_archive")')
-  workspace_content = '\n'.join([workspace_lines[0], http_archive_load] +
-                                workspace_lines[1:])
+
+  if http_archive_load not in workspace_content:
+    workspace_content = '\n'.join([workspace_lines[0], http_archive_load] +
+                                  workspace_lines[1:])
 
   cc = textwrap.dedent(
       '''\
@@ -262,6 +264,7 @@ def main():
           'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8',
           'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.10',
           'Topic :: Software Development :: Libraries',
       ],
       license='Apache 2.0',
