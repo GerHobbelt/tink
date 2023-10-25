@@ -56,7 +56,6 @@
 #include "tink/util/protobuf_helper.h"
 #include "tink/util/status.h"
 #include "tink/util/statusor.h"
-#include "tink/util/validation.h"
 #include "proto/tink.pb.h"
 
 namespace crypto {
@@ -73,18 +72,6 @@ class RegistryImpl {
   RegistryImpl() = default;
   RegistryImpl(const RegistryImpl&) = delete;
   RegistryImpl& operator=(const RegistryImpl&) = delete;
-
-  // TINK-PENDING-REMOVAL-IN-2.0.0-START
-  template <class P>
-  crypto::tink::util::StatusOr<const Catalogue<P>*> get_catalogue(
-     absl::string_view catalogue_name) const
-      ABSL_LOCKS_EXCLUDED(maps_mutex_);
-
-  template <class P>
-  crypto::tink::util::Status AddCatalogue(absl::string_view catalogue_name,
-                                          Catalogue<P>* catalogue)
-     ABSL_LOCKS_EXCLUDED(maps_mutex_);
-  // TINK-PENDING-REMOVAL-IN-2.0.0-END
 
   // Registers the given 'manager' for the key type 'manager->get_key_type()'.
   // Takes ownership of 'manager', which must be non-nullptr.
@@ -124,15 +111,6 @@ class RegistryImpl {
   crypto::tink::util::StatusOr<std::unique_ptr<P>> GetPrimitive(
       const google::crypto::tink::KeyData& key_data) const
       ABSL_LOCKS_EXCLUDED(maps_mutex_);
-
-  // NOLINTBEGIN(whitespace/line_length) (Formatted when commented in)
-  // TINK-PENDING-REMOVAL-IN-2.0.0-START
-  template <class P>
-  crypto::tink::util::StatusOr<std::unique_ptr<P>> GetPrimitive(
-      absl::string_view type_url, const portable_proto::MessageLite& key) const
-      ABSL_LOCKS_EXCLUDED(maps_mutex_);
-  // TINK-PENDING-REMOVAL-IN-2.0.0-END
-  // NOLINTEND(whitespace/line_length)
 
   crypto::tink::util::StatusOr<std::unique_ptr<google::crypto::tink::KeyData>>
   NewKeyData(const google::crypto::tink::KeyTemplate& key_template) const
@@ -401,24 +379,6 @@ class RegistryImpl {
     std::shared_ptr<void> keyset_wrapper_;
   };
 
-  // TINK-PENDING-REMOVAL-IN-2.0.0-START
-  // All information for a given primitive label.
-  struct LabelInfo {
-    LabelInfo(std::shared_ptr<void> catalogue, std::type_index type_index,
-              const char* type_id_name)
-        : catalogue(std::move(catalogue)),
-          type_index(type_index),
-          type_id_name(type_id_name) {}
-    // A pointer to the underlying Catalogue<P>. We use a shared_ptr because
-    // shared_ptr<void> is valid (as opposed to unique_ptr<void>).
-    const std::shared_ptr<void> catalogue;
-    // std::type_index of the primitive for which this key was inserted.
-    std::type_index type_index;
-    // TypeId name of the primitive for which this key was inserted.
-    const std::string type_id_name;
-  };
-  // TINK-PENDING-REMOVAL-IN-2.0.0-END
-
   template <class P>
   crypto::tink::util::StatusOr<const PrimitiveWrapper<P, P>*> GetLegacyWrapper()
       const ABSL_LOCKS_EXCLUDED(maps_mutex_);
@@ -454,67 +414,10 @@ class RegistryImpl {
   absl::flat_hash_map<std::type_index, std::unique_ptr<WrapperInfo>>
       primitive_to_wrapper_ ABSL_GUARDED_BY(maps_mutex_);
 
-  // TINK-PENDING-REMOVAL-IN-2.0.0-START
-  absl::flat_hash_map<std::string, std::unique_ptr<LabelInfo>>
-      name_to_catalogue_map_ ABSL_GUARDED_BY(maps_mutex_);
-  // TINK-PENDING-REMOVAL-IN-2.0.0-END
-
   mutable absl::Mutex monitoring_factory_mutex_;
   std::unique_ptr<crypto::tink::MonitoringClientFactory> monitoring_factory_
       ABSL_GUARDED_BY(monitoring_factory_mutex_);
 };
-
-// NOLINTBEGIN(whitespace/line_length) (Formatted when commented in)
-// TINK-PENDING-REMOVAL-IN-2.0.0-START
-template <class P>
-crypto::tink::util::Status RegistryImpl::AddCatalogue(
-    absl::string_view catalogue_name, Catalogue<P>* catalogue) {
-  if (catalogue == nullptr) {
-    return crypto::tink::util::Status(
-        absl::StatusCode::kInvalidArgument,
-        "Parameter 'catalogue' must be non-null.");
-  }
-  std::shared_ptr<void> entry(catalogue);
-  absl::MutexLock lock(&maps_mutex_);
-  auto curr_catalogue = name_to_catalogue_map_.find(catalogue_name);
-  if (curr_catalogue != name_to_catalogue_map_.end()) {
-    auto existing =
-        static_cast<Catalogue<P>*>(curr_catalogue->second->catalogue.get());
-    if (std::type_index(typeid(*existing)) !=
-        std::type_index(typeid(*catalogue))) {
-      return ToStatusF(absl::StatusCode::kAlreadyExists,
-                       "A catalogue named '%s' has been already added.",
-                       catalogue_name);
-    }
-  } else {
-    auto label_info = absl::make_unique<LabelInfo>(
-        std::move(entry), std::type_index(typeid(P)), typeid(P).name());
-    name_to_catalogue_map_.insert(
-        {std::string(catalogue_name), std::move(label_info)});
-  }
-  return crypto::tink::util::OkStatus();
-}
-
-template <class P>
-crypto::tink::util::StatusOr<const Catalogue<P>*> RegistryImpl::get_catalogue(
-    absl::string_view catalogue_name) const {
-  absl::MutexLock lock(&maps_mutex_);
-  auto catalogue_entry = name_to_catalogue_map_.find(catalogue_name);
-  if (catalogue_entry == name_to_catalogue_map_.end()) {
-    return ToStatusF(absl::StatusCode::kNotFound,
-                     "No catalogue named '%s' has been added.", catalogue_name);
-  }
-  if (catalogue_entry->second->type_id_name != typeid(P).name()) {
-    return ToStatusF(absl::StatusCode::kInvalidArgument,
-                     "Wrong Primitive type for catalogue named '%s': "
-                     "got '%s', expected '%s'",
-                     catalogue_name, typeid(P).name(),
-                     catalogue_entry->second->type_id_name);
-  }
-  return static_cast<Catalogue<P>*>(catalogue_entry->second->catalogue.get());
-}
-// TINK-PENDING-REMOVAL-IN-2.0.0-END
-// NOLINTEND(whitespace/line_length)
 
 template <class P>
 crypto::tink::util::Status RegistryImpl::RegisterKeyManager(
@@ -763,20 +666,6 @@ crypto::tink::util::StatusOr<std::unique_ptr<P>> RegistryImpl::GetPrimitive(
   }
   return key_manager_result.status();
 }
-
-// NOLINTBEGIN(whitespace/line_length) (Formatted when commented in)
-// TINK-PENDING-REMOVAL-IN-2.0.0-START
-template <class P>
-crypto::tink::util::StatusOr<std::unique_ptr<P>> RegistryImpl::GetPrimitive(
-    absl::string_view type_url, const portable_proto::MessageLite& key) const {
-  auto key_manager_result = get_key_manager<P>(type_url);
-  if (key_manager_result.ok()) {
-    return key_manager_result.value()->GetPrimitive(key);
-  }
-  return key_manager_result.status();
-}
-// TINK-PENDING-REMOVAL-IN-2.0.0-END
-// NOLINTEND(whitespace/line_length)
 
 template <class P>
 crypto::tink::util::StatusOr<const PrimitiveWrapper<P, P>*>

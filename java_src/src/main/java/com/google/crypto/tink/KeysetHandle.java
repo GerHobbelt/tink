@@ -207,6 +207,7 @@ public final class KeysetHandle {
     }
 
     private final List<KeysetHandle.Builder.Entry> entries = new ArrayList<>();
+    private MonitoringAnnotations annotations = MonitoringAnnotations.EMPTY;
     private boolean buildCalled = false;
 
     private void clearPrimary() {
@@ -226,6 +227,21 @@ public final class KeysetHandle {
       }
       entry.builder = this;
       entries.add(entry);
+      return this;
+    }
+
+    /**
+     * Sets MonitoringAnnotations. If not called, then the default value of {@link
+     * MonitoringAnnotations.EMPTY} is used.
+     *
+     * <p>When called twice, the last submitted annotations are used to create the keyset. This
+     * method is not thread-safe, and in case of multithreaded access it cannot be guaranteed which
+     * annotations get set.
+     */
+    @CanIgnoreReturnValue
+    @Alpha
+    public KeysetHandle.Builder setMonitoringAnnotations(MonitoringAnnotations annotations) {
+      this.annotations = annotations;
       return this;
     }
 
@@ -399,7 +415,7 @@ public final class KeysetHandle {
         throw new GeneralSecurityException("No primary was set");
       }
       keysetBuilder.setPrimaryKeyId(primaryId);
-      return KeysetHandle.fromKeyset(keysetBuilder.build());
+      return KeysetHandle.fromKeysetAndAnnotations(keysetBuilder.build(), annotations);
     }
   }
 
@@ -636,9 +652,7 @@ public final class KeysetHandle {
     return new KeysetHandle(keyset, entries, annotations);
   }
 
-  /**
-   * @return the actual keyset data.
-   */
+  /** Returns the actual keyset data. */
   Keyset getKeyset() {
     return keyset;
   }
@@ -725,8 +739,8 @@ public final class KeysetHandle {
   }
 
   /**
-   * @return the {@link com.google.crypto.tink.proto.KeysetInfo} that doesn't contain actual key
-   *     material.
+   * Returns the {@link com.google.crypto.tink.proto.KeysetInfo} that doesn't contain actual key
+   * material.
    */
   public KeysetInfo getKeysetInfo() {
     return Util.getKeysetInfo(keyset);
@@ -842,12 +856,12 @@ public final class KeysetHandle {
    * <p>This can be used to load public keysets or envelope encryption keysets. Users that need to
    * load cleartext keysets can use {@link CleartextKeysetHandle}.
    *
+   * <p>Note: new code should call {@code TinkProtoKeysetFormat(serialized)} instead.
+   *
    * @return a new {@link KeysetHandle} from {@code serialized} that is a serialized {@link Keyset}
    * @throws GeneralSecurityException if the keyset is invalid
-   * @deprecated Use {@code TinkProtoKeysetFormat.parseKeysetWithoutSecret(serialized)} instead.
    */
   @SuppressWarnings("UnusedException")
-  @Deprecated /* Deprecation under consideration */
   public static final KeysetHandle readNoSecret(final byte[] serialized)
       throws GeneralSecurityException {
     try {
@@ -938,7 +952,7 @@ public final class KeysetHandle {
   /**
    * If the managed keyset contains private keys, returns a {@link KeysetHandle} of the public keys.
    *
-   * @throws GenernalSecurityException if the managed keyset is null or if it contains any
+   * @throws GeneralSecurityException if the managed keyset is null or if it contains any
    *     non-private keys.
    */
   public KeysetHandle getPublicKeysetHandle() throws GeneralSecurityException {
