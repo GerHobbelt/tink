@@ -13,23 +13,29 @@
 // limitations under the License.
 //
 ///////////////////////////////////////////////////////////////////////////////
-
-#include "walkthrough/obtain_and_use_a_primitive.h"
+#include "walkthrough/write_cleartext_keyset.h"
 
 #include <memory>
 #include <ostream>
+#include <sstream>
 #include <string>
-#include <utility>
 
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "absl/strings/string_view.h"
+#include "tink/aead.h"
 #include "tink/aead/aead_config.h"
 #include "walkthrough/load_cleartext_keyset.h"
-#include "tink/util/statusor.h"
 #include "tink/util/test_matchers.h"
 
 namespace tink_walkthrough {
 namespace {
+
+using ::crypto::tink::Aead;
+using ::crypto::tink::KeysetHandle;
+using ::crypto::tink::test::IsOk;
+using ::crypto::tink::test::IsOkAndHolds;
+using ::crypto::tink::util::StatusOr;
 
 constexpr absl::string_view kSerializedKeyset = R"string({
   "key": [
@@ -47,22 +53,35 @@ constexpr absl::string_view kSerializedKeyset = R"string({
   "primaryKeyId": 294406504
 })string";
 
-using ::crypto::tink::KeysetHandle;
-using ::crypto::tink::test::IsOk;
-using ::crypto::tink::test::IsOkAndHolds;
-using ::crypto::tink::util::StatusOr;
-
-TEST(LoadKeysetTest, EncryptDecrypt) {
+TEST(WriteCleartextKeysetTest, WriteKeysetSerializesCorrectly) {
   ASSERT_THAT(crypto::tink::AeadConfig::Register(), IsOk());
-  StatusOr<std::unique_ptr<KeysetHandle>> master_key_keyset =
+  StatusOr<std::unique_ptr<KeysetHandle>> keyset =
       LoadKeyset(kSerializedKeyset);
-  ASSERT_THAT(master_key_keyset, IsOk());
-  constexpr absl::string_view kPlaintext = "Some data";
+
+  std::stringbuf buffer;
+  auto output_stream = absl::make_unique<std::ostream>(&buffer);
+  ASSERT_THAT(WriteKeyset(**keyset, std::move(output_stream)), IsOk());
+
+  StatusOr<std::unique_ptr<Aead>> aead = (*keyset)->GetPrimitive<Aead>();
+
+  // Make sure the encrypted keyset was written correctly by loading it and
+  // trying to decrypt ciphertext.
+  StatusOr<std::unique_ptr<KeysetHandle>> loaded_keyset =
+      LoadKeyset(buffer.str());
+  ASSERT_THAT(loaded_keyset, IsOk());
+  StatusOr<std::unique_ptr<Aead>> loaded_keyset_aead =
+      (*loaded_keyset)->GetPrimitive<Aead>();
+  ASSERT_THAT(loaded_keyset_aead, IsOk());
+
+  constexpr absl::string_view kPlaintext = "Some plaintext";
   constexpr absl::string_view kAssociatedData = "Some associated data";
+
   StatusOr<std::string> ciphertext =
-      AeadEncrypt(**master_key_keyset, kPlaintext, kAssociatedData);
-  ASSERT_THAT(ciphertext, IsOk());
-  EXPECT_THAT(AeadDecrypt(**master_key_keyset, *ciphertext, kAssociatedData),
+      (*aead)->Encrypt(kPlaintext, kAssociatedData);
+  EXPECT_THAT((*loaded_keyset_aead)->Decrypt(*ciphertext, kAssociatedData),
+              IsOkAndHolds(kPlaintext));
+  ciphertext = (*loaded_keyset_aead)->Encrypt(kPlaintext, kAssociatedData);
+  EXPECT_THAT((*aead)->Decrypt(*ciphertext, kAssociatedData),
               IsOkAndHolds(kPlaintext));
 }
 

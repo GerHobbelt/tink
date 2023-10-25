@@ -14,51 +14,42 @@
 //
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "walkthrough/write_keyset.h"
+#include "walkthrough/write_cleartext_keyset.h"
 
 // [START tink_walkthrough_write_keyset]
-#include <fstream>
 #include <memory>
 #include <ostream>
 #include <utility>
 
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "tink/aead.h"
+#include "tink/cleartext_keyset_handle.h"
 #include "tink/json_keyset_writer.h"
 #include "tink/keyset_handle.h"
-#include "tink/kms_client.h"
-#include "tink/kms_clients.h"
 
 namespace tink_walkthrough {
 
 using ::crypto::tink::JsonKeysetWriter;
 using ::crypto::tink::util::StatusOr;
 
-// Writes a `keyset` to `output_stream` in JSON format; the keyset is encrypted
-// through a KMS service using the KMS key `master_kms_key_uri`.
+// Writes a `keyset` to `output_stream` as a plaintext JSON format.
+//
+// Warning: Storing keys in cleartext is not recommended. We recommend using a
+// Key Management Service to protect your keys. See
+// https://github.com/google/tink/blob/master/cc/examples/walkthrough/write_keyset.cc
+// for an example, and
+// https://developers.google.com/tink/key-management-overview for more info on
+// how to use a KMS with Tink.
 //
 // Prerequisites for this example:
-//  - Register AEAD implementations of Tink.
-//  - Register a KMS client that can use `master_kms_key_uri`.
 //  - Create a keyset and obtain a KeysetHandle to it.
-crypto::tink::util::Status WriteEncryptedKeyset(
+crypto::tink::util::Status WriteKeyset(
     const crypto::tink::KeysetHandle& keyset,
-    std::unique_ptr<std::ostream> output_stream,
-    absl::string_view master_kms_key_uri) {
-  // Create a writer that will write the keyset to output_stream as JSON.
-  StatusOr<std::unique_ptr<JsonKeysetWriter>> writer =
+    std::unique_ptr<std::ostream> output_stream) {
+  StatusOr<std::unique_ptr<JsonKeysetWriter>> keyset_writer =
       JsonKeysetWriter::New(std::move(output_stream));
-  if (!writer.ok()) return writer.status();
-  // Get a KMS client for the given key URI.
-  StatusOr<const crypto::tink::KmsClient*> kms_client =
-      crypto::tink::KmsClients::Get(master_kms_key_uri);
-  if (!kms_client.ok()) return kms_client.status();
-  // Get an Aead primitive that uses the KMS service to encrypt/decrypt.
-  StatusOr<std::unique_ptr<crypto::tink::Aead>> kms_aead =
-      (*kms_client)->GetAead(master_kms_key_uri);
-  if (!kms_aead.ok()) return kms_aead.status();
-  return keyset.Write(writer->get(), **kms_aead);
+  if (!keyset_writer.ok()) return keyset_writer.status();
+  return crypto::tink::CleartextKeysetHandle::Write((keyset_writer)->get(),
+                                                    keyset);
 }
 
 }  // namespace tink_walkthrough

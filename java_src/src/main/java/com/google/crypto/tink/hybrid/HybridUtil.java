@@ -33,13 +33,14 @@ final class HybridUtil {
    * @throws GeneralSecurityException iff it's invalid.
    */
   public static void validate(EciesAeadHkdfParams params) throws GeneralSecurityException {
-    EllipticCurves.getCurveSpec(HybridUtil.toCurveType(params.getKemParams().getCurveType()));
-    HybridUtil.toHmacAlgo(params.getKemParams().getHkdfHashType());
+    Object unused =
+        EllipticCurves.getCurveSpec(HybridUtil.toCurveType(params.getKemParams().getCurveType()));
+    unused = HybridUtil.toHmacAlgo(params.getKemParams().getHkdfHashType());
     if (params.getEcPointFormat() == EcPointFormat.UNKNOWN_FORMAT) {
       throw new GeneralSecurityException("unknown EC point format");
     }
     // Check that we can generate new keys from the DEM AEAD key format.
-    Registry.newKeyData(params.getDemParams().getAeadDem());
+    unused = Registry.newKeyData(params.getDemParams().getAeadDem());
   }
 
   /**
@@ -65,7 +66,7 @@ final class HybridUtil {
     }
   }
 
-  /** Converts protobuf enum {@code EllipticCurveType} to raw Java enum {code CurveType}. */
+  /** Converts protobuf enum {@code EllipticCurveType} to raw Java enum {@code CurveType}. */
   public static EllipticCurves.CurveType toCurveType(EllipticCurveType type)
       throws GeneralSecurityException {
     switch (type) {
@@ -80,7 +81,7 @@ final class HybridUtil {
     }
   }
 
-  /** Converts protobuf enum {@code EcPointFormat} to raw Java enum {code PointFormatType}. */
+  /** Converts protobuf enum {@code EcPointFormat} to raw Java enum {@code PointFormatType}. */
   public static EllipticCurves.PointFormatType toPointFormatType(EcPointFormat format)
       throws GeneralSecurityException {
     switch (format) {
