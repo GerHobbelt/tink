@@ -38,7 +38,7 @@ import org.junit.runners.JUnit4;
 public class JsonKeysetWriterTest {
   @BeforeClass
   public static void setUp() throws GeneralSecurityException {
-    Config.register(TinkConfig.TINK_1_0_0);
+    TinkConfig.register();
   }
 
   private void assertKeysetHandle(KeysetHandle handle1, KeysetHandle handle2) throws Exception {
@@ -138,7 +138,8 @@ public class JsonKeysetWriterTest {
             .setPrimaryKeyId(magicKeyId)
             .setKey(0, Keyset.Key.newBuilder(unmodified.getKey(0)).setKeyId(magicKeyId).build())
             .build();
-    KeysetHandle modifiedHandle = CleartextKeysetHandle.parseFrom(modified.toByteArray());
+    KeysetHandle modifiedHandle =
+        TinkProtoKeysetFormat.parseKeyset(modified.toByteArray(), InsecureSecretKeyAccess.get());
 
     // Write cleartext keyset
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
