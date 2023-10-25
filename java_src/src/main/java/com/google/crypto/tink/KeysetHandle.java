@@ -207,6 +207,7 @@ public final class KeysetHandle {
     }
 
     private final List<KeysetHandle.Builder.Entry> entries = new ArrayList<>();
+    private boolean buildCalled = false;
 
     private void clearPrimary() {
       for (Builder.Entry entry : entries) {
@@ -360,9 +361,16 @@ public final class KeysetHandle {
      *       withRandomId}-entry
      *   <li>There are two entries with the same {@code withFixedId} (including pre-existing keys
      *       and imported keys which have an id requirement).
+     *   <li>{@code build()} was previously called for {@code withRandomId} entries,
+     *       and hence calling {@code build()} twice would result in a keyset with different
+     *       key IDs.
      * </ul>
      */
     public KeysetHandle build() throws GeneralSecurityException {
+      if (buildCalled) {
+        throw new GeneralSecurityException("KeysetHandle.Builder#build must only be called once");
+      }
+      buildCalled = true;
       Keyset.Builder keysetBuilder = Keyset.newBuilder();
       Integer primaryId = null;
 
@@ -960,6 +968,15 @@ public final class KeysetHandle {
   @SuppressWarnings("deprecation")
   private static void validate(KeyData keyData) throws GeneralSecurityException {
     // This will throw GeneralSecurityException if the keyData is invalid.
+    // Note: this calls a deprecated function to validate the "KeyData" proto. The usage of this
+    // deprecated function is unfortunate. However, in the end we simply want to remove this call.
+    // The only usage of this is in "getPublicKeysetHandle". This should go away, in principle
+    // the code of getPublicKeysetHandle should simply look at each entry, cast each key to
+    // {@link PrivateKey} (throw a GeneralSecurityException if this fails), call getPublicKey()
+    // and insert the result into a new keyset with the same ID and status, then return the result.
+    // If done like this, there is no reason to validate the returned Key object.
+    // (However, also note that this particular call here isn't very problematic; the problematic
+    // part of Registry.getPrimitive is that it misuses generics, but here we just want any Object).
     Object unused = Registry.getPrimitive(keyData);
   }
 

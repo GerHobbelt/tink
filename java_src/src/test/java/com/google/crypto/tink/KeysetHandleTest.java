@@ -39,11 +39,14 @@ import com.google.crypto.tink.mac.HmacKey;
 import com.google.crypto.tink.mac.MacConfig;
 import com.google.crypto.tink.monitoring.MonitoringAnnotations;
 import com.google.crypto.tink.monitoring.MonitoringClient;
+import com.google.crypto.tink.prf.PrfConfig;
 import com.google.crypto.tink.proto.AesEaxKey;
 import com.google.crypto.tink.proto.AesEaxKeyFormat;
 import com.google.crypto.tink.proto.EcdsaPrivateKey;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.HmacParams;
+import com.google.crypto.tink.proto.HmacPrfKey;
+import com.google.crypto.tink.proto.HmacPrfParams;
 import com.google.crypto.tink.proto.KeyData;
 import com.google.crypto.tink.proto.KeyStatusType;
 import com.google.crypto.tink.proto.Keyset;
@@ -142,6 +145,7 @@ public class KeysetHandleTest {
   public static void setUp() throws GeneralSecurityException {
     MacConfig.register();
     AeadConfig.register();
+    PrfConfig.register();
     SignatureConfig.register();
     AeadToEncryptOnlyWrapper.register();
   }
@@ -727,14 +731,20 @@ public class KeysetHandleTest {
 
   @Test
   public void testGetAt_singleKeyWithoutRegisteredProtoSerialization_works() throws Exception {
-    // HkdfPrfKey does currently not have a serialization registed.
+    // HmacPrfKey does not have a proto serialization registered.
+    HmacPrfKey key =
+        HmacPrfKey.newBuilder()
+            .setParams(HmacPrfParams.newBuilder().setHash(HashType.SHA256).build())
+            .setKeyValue(ByteString.copyFromUtf8("01234567890123456"))
+            .build();
     Keyset keyset =
         TestUtil.createKeyset(
             TestUtil.createKey(
-                TestUtil.createPrfKeyData("01234567890123456".getBytes(UTF_8)),
+                TestUtil.createKeyData(
+                    key, PrfConfig.HMAC_PRF_TYPE_URL, KeyData.KeyMaterialType.SYMMETRIC),
                 42,
                 KeyStatusType.ENABLED,
-                OutputPrefixType.TINK));
+                OutputPrefixType.RAW));
     KeysetHandle handle = KeysetHandle.fromKeyset(keyset);
     assertThat(handle.size()).isEqualTo(1);
     KeysetHandle.Entry entry = handle.getAt(0);
@@ -1248,6 +1258,22 @@ public class KeysetHandleTest {
     assertThat(secondKeyset.getAt(0).getStatus()).isEqualTo(originalKeyset.getAt(0).getStatus());
     assertThat(secondKeyset.getAt(1).getStatus()).isEqualTo(originalKeyset.getAt(1).getStatus());
     assertThat(secondKeyset.getAt(0).isPrimary()).isTrue();
+  }
+
+  @Test
+  public void testBuilder_buildTwice_fails() throws Exception {
+    KeysetHandle.Builder builder =
+        KeysetHandle.newBuilder()
+            .addEntry(
+                KeysetHandle.generateEntryFromParametersName("AES256_CMAC_RAW")
+                    .withRandomId()
+                    .makePrimary());
+
+    Object unused = builder.build();
+    // We disallow calling build on the same builder twice. The reason is that build assigns IDs
+    // which were marked with "withRandomId()". Doing this twice results in incompatible keysets,
+    // which would be confusing.
+    assertThrows(GeneralSecurityException.class, builder::build);
   }
 
   @Test

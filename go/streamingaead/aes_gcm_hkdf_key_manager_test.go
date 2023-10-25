@@ -365,6 +365,14 @@ func TestAESGCMHKDFDeriveKeyFailsWithInvalidKeyFormats(t *testing.T) {
 			hkdfHashType:          validKeyFormat.Params.HkdfHashType,
 		},
 		{
+			name:                  "invalid ciphertext segment size",
+			version:               validKeyFormat.Version,
+			keySize:               validKeyFormat.KeySize,
+			ciphertextSegmentSize: 2147483648,
+			derivedKeySize:        validKeyFormat.Params.DerivedKeySize,
+			hkdfHashType:          validKeyFormat.Params.HkdfHashType,
+		},
+		{
 			name:                  "invalid derived key size",
 			version:               validKeyFormat.Version,
 			keySize:               validKeyFormat.KeySize,
@@ -379,6 +387,22 @@ func TestAESGCMHKDFDeriveKeyFailsWithInvalidKeyFormats(t *testing.T) {
 			ciphertextSegmentSize: validKeyFormat.Params.CiphertextSegmentSize,
 			derivedKeySize:        validKeyFormat.Params.DerivedKeySize,
 			hkdfHashType:          commonpb.HashType_UNKNOWN_HASH,
+		},
+		{
+			name:                  "invalid HKDF hash type",
+			version:               validKeyFormat.Version,
+			keySize:               validKeyFormat.KeySize,
+			ciphertextSegmentSize: validKeyFormat.Params.CiphertextSegmentSize,
+			derivedKeySize:        validKeyFormat.Params.DerivedKeySize,
+			hkdfHashType:          commonpb.HashType_SHA224,
+		},
+		{
+			name:                  "invalid HKDF hash type",
+			version:               validKeyFormat.Version,
+			keySize:               validKeyFormat.KeySize,
+			ciphertextSegmentSize: validKeyFormat.Params.CiphertextSegmentSize,
+			derivedKeySize:        validKeyFormat.Params.DerivedKeySize,
+			hkdfHashType:          commonpb.HashType_SHA384,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
