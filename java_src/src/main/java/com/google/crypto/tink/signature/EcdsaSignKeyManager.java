@@ -19,19 +19,18 @@ package com.google.crypto.tink.signature;
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.PublicKeySign;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.internal.PrivateKeyTypeManager;
 import com.google.crypto.tink.proto.EcdsaKeyFormat;
 import com.google.crypto.tink.proto.EcdsaParams;
 import com.google.crypto.tink.proto.EcdsaPrivateKey;
 import com.google.crypto.tink.proto.EcdsaPublicKey;
-import com.google.crypto.tink.proto.EcdsaSignatureEncoding;
-import com.google.crypto.tink.proto.EllipticCurveType;
-import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
 import com.google.crypto.tink.signature.internal.SigUtil;
 import com.google.crypto.tink.subtle.EcdsaSignJce;
@@ -160,90 +159,50 @@ public final class EcdsaSignKeyManager
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<EcdsaKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<EcdsaKeyFormat>> result = new HashMap<>();
-        result.put(
-            "ECDSA_P256",
-            createKeyFormat(
-                HashType.SHA256,
-                EllipticCurveType.NIST_P256,
-                EcdsaSignatureEncoding.DER,
-                KeyTemplate.OutputPrefixType.TINK));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("ECDSA_P256", PredefinedSignatureParameters.ECDSA_P256);
         // This key template does not make sense because IEEE P1363 mandates a raw signature.
         // It is needed to maintain backward compatibility with SignatureKeyTemplates.
         // TODO(b/185475349): remove this in 2.0.0.
-        result.put(
-            "ECDSA_P256_IEEE_P1363",
-            createKeyFormat(
-                HashType.SHA256,
-                EllipticCurveType.NIST_P256,
-                EcdsaSignatureEncoding.IEEE_P1363,
-                KeyTemplate.OutputPrefixType.TINK));
+        result.put("ECDSA_P256_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P256_IEEE_P1363);
         result.put(
             "ECDSA_P256_RAW",
-            createKeyFormat(
-                HashType.SHA256,
-                EllipticCurveType.NIST_P256,
-                // Using IEEE_P1363 because a raw signature is a concatenation of r and s.
-                EcdsaSignatureEncoding.IEEE_P1363,
-                KeyTemplate.OutputPrefixType.RAW));
+            EcdsaParameters.builder()
+                .setHashType(EcdsaParameters.HashType.SHA256)
+                .setCurveType(EcdsaParameters.CurveType.NIST_P256)
+                .setSignatureEncoding(EcdsaParameters.SignatureEncoding.IEEE_P1363)
+                .setVariant(EcdsaParameters.Variant.NO_PREFIX)
+                .build());
         // This key template is identical to ECDSA_P256_RAW.
         // It is needed to maintain backward compatibility with SignatureKeyTemplates.
         // TODO(b/185475349): remove this in 2.0.0.
         result.put(
             "ECDSA_P256_IEEE_P1363_WITHOUT_PREFIX",
-            createKeyFormat(
-                HashType.SHA256,
-                EllipticCurveType.NIST_P256,
-                // Using IEEE_P1363 because a raw signature is a concatenation of r and s.
-                EcdsaSignatureEncoding.IEEE_P1363,
-                KeyTemplate.OutputPrefixType.RAW));
+            PredefinedSignatureParameters.ECDSA_P256_IEEE_P1363_WITHOUT_PREFIX);
         // TODO(b/140101381): This template is confusing and will be removed.
-        result.put(
-            "ECDSA_P384",
-            createKeyFormat(
-                HashType.SHA512,
-                EllipticCurveType.NIST_P384,
-                EcdsaSignatureEncoding.DER,
-                KeyTemplate.OutputPrefixType.TINK));
+        result.put("ECDSA_P384", PredefinedSignatureParameters.ECDSA_P384);
         // TODO(b/185475349): remove this in 2.0.0.
-        result.put(
-            "ECDSA_P384_IEEE_P1363",
-            createKeyFormat(
-                HashType.SHA512,
-                EllipticCurveType.NIST_P384,
-                EcdsaSignatureEncoding.IEEE_P1363,
-                KeyTemplate.OutputPrefixType.TINK));
+        result.put("ECDSA_P384_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P384_IEEE_P1363);
         result.put(
             "ECDSA_P384_SHA512",
-            createKeyFormat(
-                HashType.SHA512,
-                EllipticCurveType.NIST_P384,
-                EcdsaSignatureEncoding.DER,
-                KeyTemplate.OutputPrefixType.TINK));
+            EcdsaParameters.builder()
+                .setHashType(EcdsaParameters.HashType.SHA512)
+                .setCurveType(EcdsaParameters.CurveType.NIST_P384)
+                .setSignatureEncoding(EcdsaParameters.SignatureEncoding.DER)
+                .setVariant(EcdsaParameters.Variant.TINK)
+                .build());
         result.put(
             "ECDSA_P384_SHA384",
-            createKeyFormat(
-                HashType.SHA384,
-                EllipticCurveType.NIST_P384,
-                EcdsaSignatureEncoding.DER,
-                KeyTemplate.OutputPrefixType.TINK));
-        result.put(
-            "ECDSA_P521",
-            createKeyFormat(
-                HashType.SHA512,
-                EllipticCurveType.NIST_P521,
-                EcdsaSignatureEncoding.DER,
-                KeyTemplate.OutputPrefixType.TINK));
+            EcdsaParameters.builder()
+                .setHashType(EcdsaParameters.HashType.SHA384)
+                .setCurveType(EcdsaParameters.CurveType.NIST_P384)
+                .setSignatureEncoding(EcdsaParameters.SignatureEncoding.DER)
+                .setVariant(EcdsaParameters.Variant.TINK)
+                .build());
+        result.put("ECDSA_P521", PredefinedSignatureParameters.ECDSA_P521);
         // TODO(b/185475349): remove this in 2.0.0.
-        result.put(
-            "ECDSA_P521_IEEE_P1363",
-            createKeyFormat(
-                HashType.SHA512,
-                EllipticCurveType.NIST_P521,
-                EcdsaSignatureEncoding.IEEE_P1363,
-                KeyTemplate.OutputPrefixType.TINK));
+        result.put("ECDSA_P521_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P521_IEEE_P1363);
         return Collections.unmodifiableMap(result);
       }
     };
@@ -262,6 +221,8 @@ public final class EcdsaSignKeyManager
     Registry.registerAsymmetricKeyManagers(
         new EcdsaSignKeyManager(), new EcdsaVerifyKeyManager(), newKeyAllowed);
     EcdsaProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new EcdsaSignKeyManager().keyFactory().namedParameters());
   }
 
   /**
@@ -310,18 +271,4 @@ public final class EcdsaSignKeyManager
                     .build()));
   }
 
-  private static KeyFactory.KeyFormat<EcdsaKeyFormat> createKeyFormat(
-      HashType hashType,
-      EllipticCurveType curve,
-      EcdsaSignatureEncoding encoding,
-      KeyTemplate.OutputPrefixType prefixType) {
-    EcdsaParams params =
-        EcdsaParams.newBuilder()
-            .setHashType(hashType)
-            .setCurve(curve)
-            .setEncoding(encoding)
-            .build();
-    EcdsaKeyFormat format = EcdsaKeyFormat.newBuilder().setParams(params).build();
-    return new KeyFactory.KeyFormat<>(format, prefixType);
-  }
 }

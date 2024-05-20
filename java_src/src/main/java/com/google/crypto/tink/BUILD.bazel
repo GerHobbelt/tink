@@ -295,6 +295,7 @@ java_library(
     srcs = ["KeyTemplates.java"],
     deps = [
         ":key_template",
+        ":parameters",
         ":registry",
     ],
 )
@@ -304,6 +305,7 @@ android_library(
     srcs = ["KeyTemplates.java"],
     deps = [
         ":key_template-android",
+        ":parameters-android",
         ":registry-android",
     ],
 )
@@ -523,9 +525,11 @@ java_library(
         ":key_manager",
         ":key_manager_registry",
         ":key_template",
+        ":parameters",
         ":primitive_set",
         ":primitive_wrapper",
         ":private_key_manager",
+        ":tink_proto_parameters_format",
         "//proto:tink_java_proto",
         "//src/main/java/com/google/crypto/tink/config/internal:tink_fips_util",
         "//src/main/java/com/google/crypto/tink/internal:key_type_manager",
@@ -545,9 +549,11 @@ android_library(
         ":key_manager-android",
         ":key_manager_registry-android",
         ":key_template-android",
+        ":parameters-android",
         ":primitive_set-android",
         ":primitive_wrapper-android",
         ":private_key_manager-android",
+        ":tink_proto_parameters_format-android",
         "//proto:tink_java_proto_lite",
         "//src/main/java/com/google/crypto/tink/config/internal:tink_fips_util-android",
         "//src/main/java/com/google/crypto/tink/internal:key_type_manager-android",

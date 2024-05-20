@@ -17,14 +17,16 @@
 package com.google.crypto.tink.prf;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.crypto.tink.testing.KeyTypeManagerTestUtil.testKeyTemplateCompatible;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
 
+import com.google.crypto.tink.InsecureSecretKeyAccess;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.HkdfPrfKey;
 import com.google.crypto.tink.proto.HkdfPrfKeyFormat;
@@ -35,6 +37,7 @@ import com.google.crypto.tink.subtle.Random;
 import com.google.crypto.tink.subtle.prf.HkdfStreamingPrf;
 import com.google.crypto.tink.subtle.prf.StreamingPrf;
 import com.google.crypto.tink.util.Bytes;
+import com.google.crypto.tink.util.SecretBytes;
 import com.google.protobuf.ByteString;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
@@ -284,9 +287,8 @@ public class HkdfPrfKeyManagerTest {
 
   @Test
   public void testKeyTemplateAndManagerCompatibility() throws Exception {
-    HkdfPrfKeyManager manager = new HkdfPrfKeyManager();
-
-    testKeyTemplateCompatible(manager, HkdfPrfKeyManager.hkdfSha256Template());
+    Parameters p = HkdfPrfKeyManager.hkdfSha256Template().toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
   }
 
   @DataPoints("templateNames")
@@ -301,5 +303,44 @@ public class HkdfPrfKeyManagerTest {
     assertThat(h.size()).isEqualTo(1);
     assertThat(h.getAt(0).getKey().getParameters())
         .isEqualTo(KeyTemplates.get(templateName).toParameters());
+  }
+
+  @Test
+  public void register_registersPrfPrimitiveConstructor() throws Exception {
+    HkdfPrfParameters hkdfPrfParameters =
+        HkdfPrfParameters.builder()
+            .setHashType(HkdfPrfParameters.HashType.SHA256)
+            .setKeySizeBytes(32)
+            .setSalt(Bytes.copyFrom(Random.randBytes(5)))
+            .build();
+    com.google.crypto.tink.prf.HkdfPrfKey hkdfPrfKey =
+        com.google.crypto.tink.prf.HkdfPrfKey.builder()
+            .setParameters(hkdfPrfParameters)
+            .setKeyBytes(SecretBytes.copyFrom(Random.randBytes(32), InsecureSecretKeyAccess.get()))
+            .build();
+
+    Prf prf = MutablePrimitiveRegistry.globalInstance().getPrimitive(hkdfPrfKey, Prf.class);
+
+    assertThat(prf).isNotNull();
+  }
+
+  @Test
+  public void register_registersStreamingPrfPrimitiveConstructor() throws Exception {
+    HkdfPrfParameters hkdfPrfParameters =
+        HkdfPrfParameters.builder()
+            .setHashType(HkdfPrfParameters.HashType.SHA256)
+            .setKeySizeBytes(32)
+            .setSalt(Bytes.copyFrom(Random.randBytes(5)))
+            .build();
+    com.google.crypto.tink.prf.HkdfPrfKey hkdfPrfKey =
+        com.google.crypto.tink.prf.HkdfPrfKey.builder()
+            .setParameters(hkdfPrfParameters)
+            .setKeyBytes(SecretBytes.copyFrom(Random.randBytes(32), InsecureSecretKeyAccess.get()))
+            .build();
+
+    StreamingPrf streamingPrf =
+        MutablePrimitiveRegistry.globalInstance().getPrimitive(hkdfPrfKey, StreamingPrf.class);
+
+    assertThat(streamingPrf).isNotNull();
   }
 }

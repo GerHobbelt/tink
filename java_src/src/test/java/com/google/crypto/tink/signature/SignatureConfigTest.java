@@ -22,6 +22,7 @@ import static org.junit.Assert.assertThrows;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.config.TinkFips;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
+import com.google.crypto.tink.testing.TestUtil;
 import java.security.GeneralSecurityException;
 import java.security.Security;
 import org.conscrypt.Conscrypt;
@@ -48,6 +49,7 @@ public class SignatureConfigTest {
 
   @Test
   public void notOnlyFips_shouldRegisterAllKeyTypes() throws Exception {
+    Assume.assumeFalse(TestUtil.isTsan()); // KeysetHandle.generateNew is too slow in Tsan.
     Assume.assumeFalse(TinkFips.useOnlyFips());
 
     SignatureConfig.register();
@@ -64,6 +66,7 @@ public class SignatureConfigTest {
 
   @Test
   public void onlyFips_shouldRegisterFipsKeyTypes() throws Exception {
+    Assume.assumeFalse(TestUtil.isTsan()); // KeysetHandle.generateNew is too slow in Tsan.
     Assume.assumeTrue(TinkFips.useOnlyFips());
     Assume.assumeTrue(TinkFipsUtil.fipsModuleAvailable());
 
@@ -71,21 +74,21 @@ public class SignatureConfigTest {
 
     assertThat(KeysetHandle.generateNew(PredefinedSignatureParameters.RSA_SSA_PKCS1_3072_SHA256_F4))
         .isNotNull();
+    assertThat(
+            KeysetHandle.generateNew(
+                PredefinedSignatureParameters.RSA_SSA_PSS_3072_SHA256_SHA256_32_F4))
+        .isNotNull();
     assertThat(KeysetHandle.generateNew(PredefinedSignatureParameters.ECDSA_P256)).isNotNull();
   }
 
   @Test
   public void onlyFips_shouldNotRegisterNonFipsKeyTypes() throws Exception {
+    Assume.assumeFalse(TestUtil.isTsan()); // KeysetHandle.generateNew is too slow in Tsan.
     Assume.assumeTrue(TinkFips.useOnlyFips());
     Assume.assumeTrue(TinkFipsUtil.fipsModuleAvailable());
 
     SignatureConfig.register();
 
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            KeysetHandle.generateNew(
-                PredefinedSignatureParameters.RSA_SSA_PSS_3072_SHA256_SHA256_32_F4));
     assertThrows(
         GeneralSecurityException.class,
         () -> KeysetHandle.generateNew(PredefinedSignatureParameters.ED25519));

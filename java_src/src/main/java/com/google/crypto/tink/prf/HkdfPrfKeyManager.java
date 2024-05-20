@@ -18,8 +18,12 @@ package com.google.crypto.tink.prf;
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
+import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.HkdfPrfKey;
@@ -44,6 +48,21 @@ import java.util.Map;
  * HkdfStreamingPrf} and {@code HkdfPrf}.
  */
 public class HkdfPrfKeyManager extends KeyTypeManager<HkdfPrfKey> {
+
+  private static final PrimitiveConstructor<com.google.crypto.tink.prf.HkdfPrfKey, StreamingPrf>
+      STREAMING_HKDF_PRF_CONSTRUCTOR =
+          PrimitiveConstructor.create(
+              HkdfStreamingPrf::create,
+              com.google.crypto.tink.prf.HkdfPrfKey.class,
+              StreamingPrf.class);
+  private static final PrimitiveConstructor<com.google.crypto.tink.prf.HkdfPrfKey, Prf>
+      HKDF_PRF_CONSTRUCTOR =
+          PrimitiveConstructor.create(
+              (com.google.crypto.tink.prf.HkdfPrfKey key) ->
+                  PrfImpl.wrap(HkdfStreamingPrf.create(key)),
+              com.google.crypto.tink.prf.HkdfPrfKey.class,
+              Prf.class);
+
   private static com.google.crypto.tink.subtle.Enums.HashType convertHash(HashType hashType)
       throws GeneralSecurityException {
     switch (hashType) {
@@ -136,17 +155,9 @@ public class HkdfPrfKeyManager extends KeyTypeManager<HkdfPrfKey> {
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<HkdfPrfKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<HkdfPrfKeyFormat>> result = new HashMap<>();
-        result.put(
-            "HKDF_SHA256",
-            new KeyFactory.KeyFormat<>(
-                HkdfPrfKeyFormat.newBuilder()
-                    .setKeySize(32) // the size in bytes of the HKDF key
-                    .setParams(HkdfPrfParams.newBuilder().setHash(HashType.SHA256))
-                    .build(),
-                KeyTemplate.OutputPrefixType.RAW));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("HKDF_SHA256", PredefinedPrfParameters.HKDF_SHA256);
         return Collections.unmodifiableMap(result);
       }
     };
@@ -173,6 +184,11 @@ public class HkdfPrfKeyManager extends KeyTypeManager<HkdfPrfKey> {
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new HkdfPrfKeyManager(), newKeyAllowed);
     HkdfPrfProtoSerialization.register();
+    MutablePrimitiveRegistry.globalInstance().registerPrimitiveConstructor(HKDF_PRF_CONSTRUCTOR);
+    MutablePrimitiveRegistry.globalInstance()
+        .registerPrimitiveConstructor(STREAMING_HKDF_PRF_CONSTRUCTOR);
+    MutableParametersRegistry.globalInstance()
+        .putAll(new HkdfPrfKeyManager().keyFactory().namedParameters());
   }
 
   public static String staticKeyType() {

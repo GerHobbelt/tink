@@ -20,8 +20,10 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Mac;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.internal.PrimitiveFactory;
@@ -143,33 +145,17 @@ public final class AesCmacKeyManager extends KeyTypeManager<AesCmacKey> {
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<AesCmacKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<AesCmacKeyFormat>> result = new HashMap<>();
-        result.put(
-            "AES_CMAC", // backward compatibility with MacKeyTemplates
-            new KeyFactory.KeyFormat<>(
-                AesCmacKeyFormat.newBuilder()
-                    .setKeySize(32)
-                    .setParams(AesCmacParams.newBuilder().setTagSize(16).build())
-                    .build(),
-                KeyTemplate.OutputPrefixType.TINK));
-        result.put(
-            "AES256_CMAC",
-            new KeyFactory.KeyFormat<>(
-                AesCmacKeyFormat.newBuilder()
-                    .setKeySize(32)
-                    .setParams(AesCmacParams.newBuilder().setTagSize(16).build())
-                    .build(),
-                KeyTemplate.OutputPrefixType.TINK));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("AES_CMAC", PredefinedMacParameters.AES_CMAC);
+        result.put("AES256_CMAC", PredefinedMacParameters.AES_CMAC);
         result.put(
             "AES256_CMAC_RAW",
-            new KeyFactory.KeyFormat<>(
-                AesCmacKeyFormat.newBuilder()
-                    .setKeySize(32)
-                    .setParams(AesCmacParams.newBuilder().setTagSize(16).build())
-                    .build(),
-                KeyTemplate.OutputPrefixType.RAW));
+            AesCmacParameters.builder()
+                .setKeySizeBytes(32)
+                .setTagSizeBytes(16)
+                .setVariant(AesCmacParameters.Variant.NO_PREFIX)
+                .build());
         return Collections.unmodifiableMap(result);
       }
     };
@@ -182,6 +168,8 @@ public final class AesCmacKeyManager extends KeyTypeManager<AesCmacKey> {
         .registerPrimitiveConstructor(CHUNKED_MAC_PRIMITIVE_CONSTRUCTOR);
     MutablePrimitiveRegistry.globalInstance()
         .registerPrimitiveConstructor(MAC_PRIMITIVE_CONSTRUCTOR);
+    MutableParametersRegistry.globalInstance()
+        .putAll(new AesCmacKeyManager().keyFactory().namedParameters());
   }
 
   /**

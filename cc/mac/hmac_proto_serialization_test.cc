@@ -41,7 +41,6 @@ namespace {
 
 using ::crypto::tink::subtle::Random;
 using ::crypto::tink::test::IsOk;
-using ::crypto::tink::test::IsOkAndHolds;
 using ::crypto::tink::test::StatusIs;
 using ::google::crypto::tink::HashType;
 using ::google::crypto::tink::HmacKeyFormat;
@@ -71,6 +70,11 @@ class HmacProtoSerializationTest : public TestWithParam<TestCase> {
     internal::MutableSerializationRegistry::GlobalInstance().Reset();
   }
 };
+
+TEST_F(HmacProtoSerializationTest, RegisterTwiceSucceeds) {
+  ASSERT_THAT(RegisterHmacProtoSerialization(), IsOk());
+  ASSERT_THAT(RegisterHmacProtoSerialization(), IsOk());
+}
 
 INSTANTIATE_TEST_SUITE_P(
     HmacProtoSerializationTestSuite, HmacProtoSerializationTest,

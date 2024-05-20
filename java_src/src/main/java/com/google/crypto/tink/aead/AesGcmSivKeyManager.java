@@ -20,9 +20,11 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.aead.subtle.AesGcmSiv;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.AesGcmSivKey;
 import com.google.crypto.tink.proto.AesGcmSivKeyFormat;
@@ -124,15 +126,33 @@ public final class AesGcmSivKeyManager extends KeyTypeManager<AesGcmSivKey> {
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<AesGcmSivKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<AesGcmSivKeyFormat>> result = new HashMap<>();
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
 
-        result.put("AES128_GCM_SIV", createKeyFormat(16, KeyTemplate.OutputPrefixType.TINK));
-        result.put("AES128_GCM_SIV_RAW", createKeyFormat(16, KeyTemplate.OutputPrefixType.RAW));
-
-        result.put("AES256_GCM_SIV", createKeyFormat(32, KeyTemplate.OutputPrefixType.TINK));
-        result.put("AES256_GCM_SIV_RAW", createKeyFormat(32, KeyTemplate.OutputPrefixType.RAW));
+        result.put(
+            "AES128_GCM_SIV",
+            AesGcmSivParameters.builder()
+                .setKeySizeBytes(16)
+                .setVariant(AesGcmSivParameters.Variant.TINK)
+                .build());
+        result.put(
+            "AES128_GCM_SIV_RAW",
+            AesGcmSivParameters.builder()
+                .setKeySizeBytes(16)
+                .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+                .build());
+        result.put(
+            "AES256_GCM_SIV",
+            AesGcmSivParameters.builder()
+                .setKeySizeBytes(32)
+                .setVariant(AesGcmSivParameters.Variant.TINK)
+                .build());
+        result.put(
+            "AES256_GCM_SIV_RAW",
+            AesGcmSivParameters.builder()
+                .setKeySizeBytes(32)
+                .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+                .build());
 
         return Collections.unmodifiableMap(result);
       }
@@ -152,6 +172,8 @@ public final class AesGcmSivKeyManager extends KeyTypeManager<AesGcmSivKey> {
     if (canUseAesGcmSive()) {
       Registry.registerKeyManager(new AesGcmSivKeyManager(), newKeyAllowed);
       AesGcmSivProtoSerialization.register();
+      MutableParametersRegistry.globalInstance()
+          .putAll(new AesGcmSivKeyManager().keyFactory().namedParameters());
     }
   }
 
@@ -236,9 +258,4 @@ public final class AesGcmSivKeyManager extends KeyTypeManager<AesGcmSivKey> {
   }
 
 
-  private static KeyFactory.KeyFormat<AesGcmSivKeyFormat> createKeyFormat(
-      int keySize, KeyTemplate.OutputPrefixType prefixType) {
-    AesGcmSivKeyFormat format = AesGcmSivKeyFormat.newBuilder().setKeySize(keySize).build();
-    return new KeyFactory.KeyFormat<>(format, prefixType);
-  }
 }

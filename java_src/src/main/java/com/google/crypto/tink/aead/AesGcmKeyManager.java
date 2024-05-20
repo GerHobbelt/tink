@@ -20,9 +20,11 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.AesGcmKey;
 import com.google.crypto.tink.proto.AesGcmKeyFormat;
@@ -122,13 +124,26 @@ public final class AesGcmKeyManager extends KeyTypeManager<AesGcmKey> {
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<AesGcmKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<AesGcmKeyFormat>> result = new HashMap<>();
-        result.put("AES128_GCM", createKeyFormat(16, KeyTemplate.OutputPrefixType.TINK));
-        result.put("AES128_GCM_RAW", createKeyFormat(16, KeyTemplate.OutputPrefixType.RAW));
-        result.put("AES256_GCM", createKeyFormat(32, KeyTemplate.OutputPrefixType.TINK));
-        result.put("AES256_GCM_RAW", createKeyFormat(32, KeyTemplate.OutputPrefixType.RAW));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("AES128_GCM", PredefinedAeadParameters.AES128_GCM);
+        result.put(
+            "AES128_GCM_RAW",
+            AesGcmParameters.builder()
+                .setIvSizeBytes(12)
+                .setKeySizeBytes(16)
+                .setTagSizeBytes(16)
+                .setVariant(AesGcmParameters.Variant.NO_PREFIX)
+                .build());
+        result.put("AES256_GCM", PredefinedAeadParameters.AES256_GCM);
+        result.put(
+            "AES256_GCM_RAW",
+            AesGcmParameters.builder()
+                .setIvSizeBytes(12)
+                .setKeySizeBytes(32)
+                .setTagSizeBytes(16)
+                .setVariant(AesGcmParameters.Variant.NO_PREFIX)
+                .build());
         return Collections.unmodifiableMap(result);
       }
     };
@@ -137,6 +152,8 @@ public final class AesGcmKeyManager extends KeyTypeManager<AesGcmKey> {
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new AesGcmKeyManager(), newKeyAllowed);
     AesGcmProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new AesGcmKeyManager().keyFactory().namedParameters());
   }
 
   /**
@@ -233,12 +250,6 @@ public final class AesGcmKeyManager extends KeyTypeManager<AesGcmKey> {
                     .setTagSizeBytes(16)
                     .setVariant(AesGcmParameters.Variant.NO_PREFIX)
                     .build()));
-  }
-
-  private static KeyFactory.KeyFormat<AesGcmKeyFormat> createKeyFormat(
-      int keySize, KeyTemplate.OutputPrefixType prefixType) {
-    AesGcmKeyFormat format = AesGcmKeyFormat.newBuilder().setKeySize(keySize).build();
-    return new KeyFactory.KeyFormat<>(format, prefixType);
   }
 
   @Override

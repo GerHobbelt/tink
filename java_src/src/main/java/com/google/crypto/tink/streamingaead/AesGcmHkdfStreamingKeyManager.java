@@ -19,9 +19,11 @@ package com.google.crypto.tink.streamingaead;
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.StreamingAead;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.AesGcmHkdfStreamingKey;
 import com.google.crypto.tink.proto.AesGcmHkdfStreamingKeyFormat;
@@ -142,27 +144,12 @@ public final class AesGcmHkdfStreamingKeyManager extends KeyTypeManager<AesGcmHk
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<AesGcmHkdfStreamingKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<AesGcmHkdfStreamingKeyFormat>> result = new HashMap<>();
-        result.put(
-            "AES128_GCM_HKDF_4KB",
-            new KeyFactory.KeyFormat<>(
-                createKeyFormat(16, HashType.SHA256, 16, 4096), KeyTemplate.OutputPrefixType.RAW));
-        result.put(
-            "AES128_GCM_HKDF_1MB",
-            new KeyFactory.KeyFormat<>(
-                createKeyFormat(16, HashType.SHA256, 16, 1 << 20),
-                KeyTemplate.OutputPrefixType.RAW));
-        result.put(
-            "AES256_GCM_HKDF_4KB",
-            new KeyFactory.KeyFormat<>(
-                createKeyFormat(32, HashType.SHA256, 32, 4096), KeyTemplate.OutputPrefixType.RAW));
-        result.put(
-            "AES256_GCM_HKDF_1MB",
-            new KeyFactory.KeyFormat<>(
-                createKeyFormat(32, HashType.SHA256, 32, 1 << 20),
-                KeyTemplate.OutputPrefixType.RAW));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("AES128_GCM_HKDF_4KB", PredefinedStreamingAeadParameters.AES128_GCM_HKDF_4KB);
+        result.put("AES128_GCM_HKDF_1MB", PredefinedStreamingAeadParameters.AES128_GCM_HKDF_1MB);
+        result.put("AES256_GCM_HKDF_4KB", PredefinedStreamingAeadParameters.AES256_GCM_HKDF_4KB);
+        result.put("AES256_GCM_HKDF_1MB", PredefinedStreamingAeadParameters.AES256_GCM_HKDF_1MB);
         return Collections.unmodifiableMap(result);
       }
     };
@@ -187,6 +174,8 @@ public final class AesGcmHkdfStreamingKeyManager extends KeyTypeManager<AesGcmHk
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new AesGcmHkdfStreamingKeyManager(), newKeyAllowed);
     AesGcmHkdfStreamingProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new AesGcmHkdfStreamingKeyManager().keyFactory().namedParameters());
   }
 
   /**
@@ -277,17 +266,4 @@ public final class AesGcmHkdfStreamingKeyManager extends KeyTypeManager<AesGcmHk
                     .build()));
   }
 
-  private static AesGcmHkdfStreamingKeyFormat createKeyFormat(
-      int mainKeySize, HashType hkdfHashType, int derivedKeySize, int ciphertextSegmentSize) {
-    AesGcmHkdfStreamingParams keyParams =
-        AesGcmHkdfStreamingParams.newBuilder()
-            .setCiphertextSegmentSize(ciphertextSegmentSize)
-            .setDerivedKeySize(derivedKeySize)
-            .setHkdfHashType(hkdfHashType)
-            .build();
-    return AesGcmHkdfStreamingKeyFormat.newBuilder()
-        .setKeySize(mainKeySize)
-        .setParams(keyParams)
-        .build();
-  }
 }

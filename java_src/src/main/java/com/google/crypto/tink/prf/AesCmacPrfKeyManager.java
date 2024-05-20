@@ -19,8 +19,10 @@ package com.google.crypto.tink.prf;
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.internal.PrimitiveFactory;
@@ -116,21 +118,11 @@ public final class AesCmacPrfKeyManager extends KeyTypeManager<AesCmacPrfKey> {
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<AesCmacPrfKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<AesCmacPrfKeyFormat>> result = new HashMap<>();
-        result.put(
-            "AES256_CMAC_PRF",
-            new KeyFactory.KeyFormat<>(
-                AesCmacPrfKeyFormat.newBuilder().setKeySize(32).build(),
-                KeyTemplate.OutputPrefixType.RAW));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("AES256_CMAC_PRF", PredefinedPrfParameters.AES_CMAC_PRF);
         // Identical to AES256_CMAC_PRF, needed for backward compatibility with PrfKeyTemplates.
-        // TODO(b/185475349): remove this.
-        result.put(
-            "AES_CMAC_PRF",
-            new KeyFactory.KeyFormat<>(
-                AesCmacPrfKeyFormat.newBuilder().setKeySize(32).build(),
-                KeyTemplate.OutputPrefixType.RAW));
+        result.put("AES_CMAC_PRF", PredefinedPrfParameters.AES_CMAC_PRF);
         return Collections.unmodifiableMap(result);
       }
     };
@@ -141,6 +133,8 @@ public final class AesCmacPrfKeyManager extends KeyTypeManager<AesCmacPrfKey> {
     AesCmacPrfProtoSerialization.register();
     MutablePrimitiveRegistry.globalInstance()
         .registerPrimitiveConstructor(PRF_PRIMITIVE_CONSTRUCTOR);
+    MutableParametersRegistry.globalInstance()
+        .putAll(new AesCmacPrfKeyManager().keyFactory().namedParameters());
   }
 
   /**

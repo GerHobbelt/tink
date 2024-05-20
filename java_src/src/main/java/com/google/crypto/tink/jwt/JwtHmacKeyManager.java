@@ -20,8 +20,11 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.JwtHmacAlgorithm;
 import com.google.crypto.tink.proto.JwtHmacKey;
@@ -209,34 +212,65 @@ public final class JwtHmacKeyManager extends KeyTypeManager<JwtHmacKey> {
        * header.
        */
       @Override
-      public Map<String, KeyFactory.KeyFormat<JwtHmacKeyFormat>> keyFormats() {
-        Map<String, KeyFactory.KeyFormat<JwtHmacKeyFormat>> result = new HashMap<>();
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
         result.put(
             "JWT_HS256_RAW",
-            createKeyFormat(JwtHmacAlgorithm.HS256, 32, KeyTemplate.OutputPrefixType.RAW));
+            JwtHmacParameters.builder()
+                .setKeySizeBytes(32)
+                .setAlgorithm(JwtHmacParameters.Algorithm.HS256)
+                .setKidStrategy(JwtHmacParameters.KidStrategy.IGNORED)
+                .build());
         result.put(
             "JWT_HS256",
-            createKeyFormat(JwtHmacAlgorithm.HS256, 32, KeyTemplate.OutputPrefixType.TINK));
+            JwtHmacParameters.builder()
+                .setKeySizeBytes(32)
+                .setAlgorithm(JwtHmacParameters.Algorithm.HS256)
+                .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                .build());
         result.put(
             "JWT_HS384_RAW",
-            createKeyFormat(JwtHmacAlgorithm.HS384, 48, KeyTemplate.OutputPrefixType.RAW));
+            JwtHmacParameters.builder()
+                .setKeySizeBytes(48)
+                .setAlgorithm(JwtHmacParameters.Algorithm.HS384)
+                .setKidStrategy(JwtHmacParameters.KidStrategy.IGNORED)
+                .build());
         result.put(
             "JWT_HS384",
-            createKeyFormat(JwtHmacAlgorithm.HS384, 48, KeyTemplate.OutputPrefixType.TINK));
+            JwtHmacParameters.builder()
+                .setKeySizeBytes(48)
+                .setAlgorithm(JwtHmacParameters.Algorithm.HS384)
+                .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                .build());
         result.put(
             "JWT_HS512_RAW",
-            createKeyFormat(JwtHmacAlgorithm.HS512, 64, KeyTemplate.OutputPrefixType.RAW));
+            JwtHmacParameters.builder()
+                .setKeySizeBytes(64)
+                .setAlgorithm(JwtHmacParameters.Algorithm.HS512)
+                .setKidStrategy(JwtHmacParameters.KidStrategy.IGNORED)
+                .build());
         result.put(
             "JWT_HS512",
-            createKeyFormat(JwtHmacAlgorithm.HS512, 64, KeyTemplate.OutputPrefixType.TINK));
+            JwtHmacParameters.builder()
+                .setKeySizeBytes(64)
+                .setAlgorithm(JwtHmacParameters.Algorithm.HS512)
+                .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                .build());
         return Collections.unmodifiableMap(result);
       }
     };
   }
 
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_REQUIRES_BORINGCRYPTO;
+  }
+
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new JwtHmacKeyManager(), newKeyAllowed);
     JwtHmacProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new JwtHmacKeyManager().keyFactory().namedParameters());
   }
 
   /** Returns a {@link KeyTemplate} that generates new instances of HS256 256-bit keys. */
@@ -275,10 +309,4 @@ public final class JwtHmacKeyManager extends KeyTypeManager<JwtHmacKey> {
                     .build()));
   }
 
-  private static KeyFactory.KeyFormat<JwtHmacKeyFormat> createKeyFormat(
-      JwtHmacAlgorithm algorithm, int keySize, KeyTemplate.OutputPrefixType prefixType) {
-    JwtHmacKeyFormat format =
-        JwtHmacKeyFormat.newBuilder().setAlgorithm(algorithm).setKeySize(keySize).build();
-    return new KeyFactory.KeyFormat<>(format, prefixType);
-  }
 }

@@ -19,13 +19,14 @@ package com.google.crypto.tink.signature;
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.PublicKeySign;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.internal.PrivateKeyTypeManager;
-import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
 import com.google.crypto.tink.proto.RsaSsaPkcs1KeyFormat;
 import com.google.crypto.tink.proto.RsaSsaPkcs1Params;
@@ -48,7 +49,6 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.RSAKeyGenParameterSpec;
 import java.security.spec.RSAPrivateCrtKeySpec;
 import java.security.spec.RSAPublicKeySpec;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -187,38 +187,37 @@ public final class RsaSsaPkcs1SignKeyManager
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<RsaSsaPkcs1KeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<RsaSsaPkcs1KeyFormat>> result = new HashMap<>();
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
         result.put(
             "RSA_SSA_PKCS1_3072_SHA256_F4",
-            new KeyFormat<>(
-                createKeyFormat(HashType.SHA256, 3072, RSAKeyGenParameterSpec.F4),
-                KeyTemplate.OutputPrefixType.TINK));
+            PredefinedSignatureParameters.RSA_SSA_PKCS1_3072_SHA256_F4);
         result.put(
             "RSA_SSA_PKCS1_3072_SHA256_F4_RAW",
-            new KeyFormat<>(
-                createKeyFormat(HashType.SHA256, 3072, RSAKeyGenParameterSpec.F4),
-                KeyTemplate.OutputPrefixType.RAW));
+            RsaSsaPkcs1Parameters.builder()
+                .setHashType(RsaSsaPkcs1Parameters.HashType.SHA256)
+                .setModulusSizeBits(3072)
+                .setPublicExponent(RsaSsaPkcs1Parameters.F4)
+                .setVariant(RsaSsaPkcs1Parameters.Variant.NO_PREFIX)
+                .build());
         // This is identical to RSA_SSA_PKCS1_3072_SHA256_F4_RAW. It is needed to maintain backward
         // compatibility with SignatureKeyTemplates.
         // TODO(b/185475349): remove this in Tink 2.0.0.
         result.put(
             "RSA_SSA_PKCS1_3072_SHA256_F4_WITHOUT_PREFIX",
-            new KeyFormat<>(
-                createKeyFormat(HashType.SHA256, 3072, RSAKeyGenParameterSpec.F4),
-                KeyTemplate.OutputPrefixType.RAW));
+            PredefinedSignatureParameters.RSA_SSA_PKCS1_3072_SHA256_F4_WITHOUT_PREFIX);
         result.put(
             "RSA_SSA_PKCS1_4096_SHA512_F4",
-            new KeyFormat<>(
-                createKeyFormat(HashType.SHA512, 4096, RSAKeyGenParameterSpec.F4),
-                KeyTemplate.OutputPrefixType.TINK));
+            PredefinedSignatureParameters.RSA_SSA_PKCS1_4096_SHA512_F4);
         result.put(
             "RSA_SSA_PKCS1_4096_SHA512_F4_RAW",
-            new KeyFormat<>(
-                createKeyFormat(HashType.SHA512, 4096, RSAKeyGenParameterSpec.F4),
-                KeyTemplate.OutputPrefixType.RAW));
-        return Collections.unmodifiableMap(result);
+            RsaSsaPkcs1Parameters.builder()
+                .setHashType(RsaSsaPkcs1Parameters.HashType.SHA512)
+                .setModulusSizeBits(4096)
+                .setPublicExponent(RsaSsaPkcs1Parameters.F4)
+                .setVariant(RsaSsaPkcs1Parameters.Variant.NO_PREFIX)
+                .build());
+        return result;
       }
     };
   }
@@ -236,6 +235,8 @@ public final class RsaSsaPkcs1SignKeyManager
     Registry.registerAsymmetricKeyManagers(
         new RsaSsaPkcs1SignKeyManager(), new RsaSsaPkcs1VerifyKeyManager(), newKeyAllowed);
     RsaSsaPkcs1ProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new RsaSsaPkcs1SignKeyManager().keyFactory().namedParameters());
   }
 
   /**
@@ -326,13 +327,4 @@ public final class RsaSsaPkcs1SignKeyManager
                     .build()));
   }
 
-  private static RsaSsaPkcs1KeyFormat createKeyFormat(
-      HashType hashType, int modulusSize, BigInteger publicExponent) {
-    RsaSsaPkcs1Params params = RsaSsaPkcs1Params.newBuilder().setHashType(hashType).build();
-    return RsaSsaPkcs1KeyFormat.newBuilder()
-        .setParams(params)
-        .setModulusSizeInBits(modulusSize)
-        .setPublicExponent(ByteString.copyFrom(publicExponent.toByteArray()))
-        .build();
-  }
 }

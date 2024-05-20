@@ -22,6 +22,7 @@ import static org.junit.Assert.assertThrows;
 
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.KmsClients;
 import com.google.crypto.tink.internal.KeyTemplateProtoConverter;
@@ -55,6 +56,7 @@ public class KmsEnvelopeAeadKeyManagerTest {
   public static void setUp() throws Exception {
     KmsClients.add(new FakeKmsClient());
     AeadConfig.register();
+    AesGcmSivProtoSerialization.register();
   }
 
   @Test
@@ -231,6 +233,213 @@ public class KmsEnvelopeAeadKeyManagerTest {
     assertThat(kekUri).isEqualTo(format.getKekUri());
     assertThat(dekTemplateProto.getTypeUrl()).isEqualTo(format.getDekTemplate().getTypeUrl());
     assertThat(dekTemplateProto.getValue()).isEqualTo(format.getDekTemplate().getValue());
+  }
+
+  @Test
+  public void createKeyTemplate_ignoresOutputPrefix() throws Exception {
+    // When we create LegacyKmsEnvelopeAeadParameters, the underlying OutputPrefixType in the
+    // passed in dek Template is ignored.
+    KeyTemplate template1 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "some URI", KeyTemplates.get("AES128_CTR_HMAC_SHA256"));
+    KeyTemplate template2 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "some URI", KeyTemplates.get("AES128_CTR_HMAC_SHA256_RAW"));
+    assertThat(template1.toParameters()).isEqualTo(template2.toParameters());
+  }
+
+  @Test
+  public void createKeyTemplate_aesGcm_works() throws Exception {
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setKekUri("SomeMatchingKekUri")
+            .setDekParsingStrategy(
+                LegacyKmsEnvelopeAeadParameters.DekParsingStrategy.ASSUME_AES_GCM)
+            .setDekParametersForNewKeys(
+                AesGcmParameters.builder()
+                    .setIvSizeBytes(12)
+                    .setKeySizeBytes(16)
+                    .setTagSizeBytes(16)
+                    .setVariant(AesGcmParameters.Variant.NO_PREFIX)
+                    .build())
+            .build();
+
+    // Check with both NO_PREFIX as well as TINK to ensure the Variant is ignored.
+    KeyTemplate template1 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeMatchingKekUri", KeyTemplates.get("AES128_GCM"));
+    assertThat(template1.toParameters()).isEqualTo(parameters);
+
+    KeyTemplate template2 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeMatchingKekUri", KeyTemplates.get("AES128_GCM_RAW"));
+    assertThat(template2.toParameters()).isEqualTo(parameters);
+  }
+
+  @Test
+  public void createKeyTemplate_chacha_works() throws Exception {
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setKekUri("SomeMatchingKekUri")
+            .setDekParsingStrategy(
+                LegacyKmsEnvelopeAeadParameters.DekParsingStrategy.ASSUME_CHACHA20POLY1305)
+            .setDekParametersForNewKeys(
+                ChaCha20Poly1305Parameters.create(ChaCha20Poly1305Parameters.Variant.NO_PREFIX))
+            .build();
+
+    // Check with both NO_PREFIX as well as TINK to ensure the Variant is ignored.
+    KeyTemplate template1 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeMatchingKekUri",
+            KeyTemplate.createFrom(
+                ChaCha20Poly1305Parameters.create(ChaCha20Poly1305Parameters.Variant.NO_PREFIX)));
+    assertThat(template1.toParameters()).isEqualTo(parameters);
+
+    KeyTemplate template2 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeMatchingKekUri",
+            KeyTemplate.createFrom(
+                ChaCha20Poly1305Parameters.create(ChaCha20Poly1305Parameters.Variant.TINK)));
+    assertThat(template2.toParameters()).isEqualTo(parameters);
+  }
+
+  @Test
+  public void createKeyTemplate_xchacha_works() throws Exception {
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setKekUri("SomeMatchingKekUri")
+            .setDekParsingStrategy(
+                LegacyKmsEnvelopeAeadParameters.DekParsingStrategy.ASSUME_XCHACHA20POLY1305)
+            .setDekParametersForNewKeys(
+                XChaCha20Poly1305Parameters.create(XChaCha20Poly1305Parameters.Variant.NO_PREFIX))
+            .build();
+
+    // Check with both NO_PREFIX as well as TINK to ensure the Variant is ignored.
+    KeyTemplate template1 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeMatchingKekUri",
+            KeyTemplate.createFrom(
+                XChaCha20Poly1305Parameters.create(XChaCha20Poly1305Parameters.Variant.NO_PREFIX)));
+    assertThat(template1.toParameters()).isEqualTo(parameters);
+
+    KeyTemplate template2 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeMatchingKekUri",
+            KeyTemplate.createFrom(
+                XChaCha20Poly1305Parameters.create(XChaCha20Poly1305Parameters.Variant.TINK)));
+    assertThat(template2.toParameters()).isEqualTo(parameters);
+  }
+
+  @Test
+  public void createKeyTemplate_eax_works() throws Exception {
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setKekUri("SomeOtherKekUri")
+            .setDekParsingStrategy(
+                LegacyKmsEnvelopeAeadParameters.DekParsingStrategy.ASSUME_AES_EAX)
+            .setDekParametersForNewKeys(
+                AesEaxParameters.builder()
+                    .setIvSizeBytes(16)
+                    .setKeySizeBytes(16)
+                    .setTagSizeBytes(16)
+                    .setVariant(AesEaxParameters.Variant.NO_PREFIX)
+                    .build())
+            .build();
+
+    // Check with both NO_PREFIX as well as TINK to ensure the Variant is ignored.
+    KeyTemplate template1 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeOtherKekUri", KeyTemplates.get("AES128_EAX_RAW"));
+    assertThat(template1.toParameters()).isEqualTo(parameters);
+
+    KeyTemplate template2 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeOtherKekUri", KeyTemplates.get("AES128_EAX"));
+    assertThat(template2.toParameters()).isEqualTo(parameters);
+  }
+
+  @Test
+  public void createKeyTemplate_gcmsiv_works() throws Exception {
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setKekUri("SomeOtherKekUri")
+            .setDekParsingStrategy(
+                LegacyKmsEnvelopeAeadParameters.DekParsingStrategy.ASSUME_AES_GCM_SIV)
+            .setDekParametersForNewKeys(
+                AesGcmSivParameters.builder()
+                    .setKeySizeBytes(16)
+                    .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+                    .build())
+            .build();
+
+    // Check with both NO_PREFIX as well as TINK to ensure the Variant is ignored.
+    KeyTemplate template1 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeOtherKekUri",
+            KeyTemplate.createFrom(
+                AesGcmSivParameters.builder()
+                    .setKeySizeBytes(16)
+                    .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+                    .build()));
+    assertThat(template1.toParameters()).isEqualTo(parameters);
+
+    KeyTemplate template2 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeOtherKekUri",
+            KeyTemplate.createFrom(
+                AesGcmSivParameters.builder()
+                    .setKeySizeBytes(16)
+                    .setVariant(AesGcmSivParameters.Variant.TINK)
+                    .build()));
+    assertThat(template2.toParameters()).isEqualTo(parameters);
+  }
+
+  @Test
+  public void createKeyTemplate_aesctrhmac_works() throws Exception {
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setKekUri("SomeOtherKekUri")
+            .setDekParsingStrategy(
+                LegacyKmsEnvelopeAeadParameters.DekParsingStrategy.ASSUME_AES_CTR_HMAC)
+            .setDekParametersForNewKeys(
+                AesCtrHmacAeadParameters.builder()
+                    .setAesKeySizeBytes(16)
+                    .setHmacKeySizeBytes(32)
+                    .setTagSizeBytes(32)
+                    .setIvSizeBytes(16)
+                    .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
+                    .setVariant(AesCtrHmacAeadParameters.Variant.NO_PREFIX)
+                    .build())
+            .build();
+
+    // Check with both NO_PREFIX as well as TINK to ensure the Variant is ignored.
+    KeyTemplate template1 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeOtherKekUri",
+            KeyTemplate.createFrom(
+                AesCtrHmacAeadParameters.builder()
+                    .setAesKeySizeBytes(16)
+                    .setHmacKeySizeBytes(32)
+                    .setTagSizeBytes(32)
+                    .setIvSizeBytes(16)
+                    .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
+                    .setVariant(AesCtrHmacAeadParameters.Variant.NO_PREFIX)
+                    .build()));
+    assertThat(template1.toParameters()).isEqualTo(parameters);
+
+    KeyTemplate template2 =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(
+            "SomeOtherKekUri",
+            KeyTemplate.createFrom(
+                AesCtrHmacAeadParameters.builder()
+                    .setAesKeySizeBytes(16)
+                    .setHmacKeySizeBytes(32)
+                    .setTagSizeBytes(32)
+                    .setIvSizeBytes(16)
+                    .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
+                    .setVariant(AesCtrHmacAeadParameters.Variant.TINK)
+                    .build()));
+    assertThat(template2.toParameters()).isEqualTo(parameters);
   }
 
   @Test

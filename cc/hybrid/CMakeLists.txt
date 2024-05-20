@@ -325,6 +325,63 @@ tink_cc_library(
     tink::util::statusor
 )
 
+tink_cc_library(
+  NAME hpke_private_key
+  SRCS
+    hpke_private_key.cc
+    hpke_private_key.h
+  DEPS
+    tink::hybrid::hpke_parameters
+    tink::hybrid::hpke_public_key
+    tink::hybrid::hybrid_private_key
+    absl::status
+    absl::strings
+    absl::str_format
+    crypto
+    tink::core::insecure_secret_key_access
+    tink::core::key
+    tink::core::partial_key_access_token
+    tink::core::restricted_data
+    tink::internal::bn_util
+    tink::internal::ec_util
+    tink::internal::err_util
+    tink::internal::ssl_unique_ptr
+    tink::subtle::common_enums
+    tink::util::secret_data
+    tink::util::status
+    tink::util::statusor
+)
+
+tink_cc_library(
+  NAME hpke_proto_serialization
+  SRCS
+    hpke_proto_serialization.cc
+    hpke_proto_serialization.h
+  DEPS
+    tink::hybrid::hpke_parameters
+    tink::hybrid::hpke_private_key
+    tink::hybrid::hpke_public_key
+    absl::core_headers
+    absl::status
+    absl::strings
+    absl::optional
+    tink::core::insecure_secret_key_access
+    tink::core::partial_key_access
+    tink::core::restricted_data
+    tink::core::secret_key_access_token
+    tink::internal::key_parser
+    tink::internal::key_serializer
+    tink::internal::mutable_serialization_registry
+    tink::internal::parameters_parser
+    tink::internal::parameters_serializer
+    tink::internal::proto_key_serialization
+    tink::internal::proto_parameters_serialization
+    tink::util::status
+    tink::util::statusor
+    tink::proto::hpke_cc_proto
+    tink::proto::tink_cc_proto
+)
+
 # tests
 
 tink_cc_test(
@@ -623,4 +680,64 @@ tink_cc_test(
     tink::subtle::random
     tink::util::statusor
     tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME hpke_private_key_test
+  SRCS
+    hpke_private_key_test.cc
+  DEPS
+    tink::hybrid::hpke_parameters
+    tink::hybrid::hpke_private_key
+    tink::hybrid::hpke_public_key
+    gmock
+    absl::status
+    absl::strings
+    absl::string_view
+    absl::optional
+    crypto
+    tink::core::insecure_secret_key_access
+    tink::core::partial_key_access
+    tink::core::restricted_data
+    tink::internal::ec_util
+    tink::internal::ssl_unique_ptr
+    tink::subtle::common_enums
+    tink::subtle::random
+    tink::util::secret_data
+    tink::util::statusor
+    tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME hpke_proto_serialization_test
+  SRCS
+    hpke_proto_serialization_test.cc
+  DEPS
+    tink::hybrid::hpke_parameters
+    tink::hybrid::hpke_private_key
+    tink::hybrid::hpke_proto_serialization
+    tink::hybrid::hpke_public_key
+    gmock
+    absl::status
+    absl::string_view
+    absl::optional
+    crypto
+    tink::core::insecure_secret_key_access
+    tink::core::key
+    tink::core::parameters
+    tink::core::partial_key_access
+    tink::core::restricted_data
+    tink::internal::ec_util
+    tink::internal::mutable_serialization_registry
+    tink::internal::proto_key_serialization
+    tink::internal::proto_parameters_serialization
+    tink::internal::serialization
+    tink::internal::ssl_unique_ptr
+    tink::subtle::common_enums
+    tink::subtle::random
+    tink::util::secret_data
+    tink::util::statusor
+    tink::util::test_matchers
+    tink::proto::hpke_cc_proto
+    tink::proto::tink_cc_proto
 )

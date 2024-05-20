@@ -17,18 +17,21 @@
 package com.google.crypto.tink.hybrid;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.crypto.tink.testing.KeyTypeManagerTestUtil.testKeyTemplateCompatible;
 import static org.junit.Assert.assertThrows;
 
 import com.google.crypto.tink.HybridDecrypt;
 import com.google.crypto.tink.HybridEncrypt;
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.KeyTemplates;
+import com.google.crypto.tink.KeysetHandle;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.aead.AeadConfig;
 import com.google.crypto.tink.aead.AesCtrHmacAeadKeyManager;
 import com.google.crypto.tink.aead.AesCtrHmacAeadParameters;
 import com.google.crypto.tink.aead.AesGcmParameters;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.proto.EcPointFormat;
+import com.google.crypto.tink.proto.EciesAeadDemParams;
 import com.google.crypto.tink.proto.EciesAeadHkdfKeyFormat;
 import com.google.crypto.tink.proto.EciesAeadHkdfParams;
 import com.google.crypto.tink.proto.EciesAeadHkdfPrivateKey;
@@ -37,20 +40,25 @@ import com.google.crypto.tink.proto.EciesHkdfKemParams;
 import com.google.crypto.tink.proto.EllipticCurveType;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
+import com.google.crypto.tink.proto.OutputPrefixType;
 import com.google.crypto.tink.subtle.EciesAeadHkdfDemHelper;
 import com.google.crypto.tink.subtle.EciesAeadHkdfHybridEncrypt;
 import com.google.crypto.tink.subtle.EllipticCurves;
 import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.subtle.Random;
+import com.google.protobuf.ByteString;
 import java.security.GeneralSecurityException;
 import java.security.interfaces.ECPublicKey;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.experimental.theories.DataPoints;
+import org.junit.experimental.theories.FromDataPoints;
+import org.junit.experimental.theories.Theories;
+import org.junit.experimental.theories.Theory;
 import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
 
 /** Tests for EciesAeadHkdfPrivateKeyManager. */
-@RunWith(JUnit4.class)
+@RunWith(Theories.class)
 public class EciesAeadHkdfPrivateKeyManagerTest {
   @BeforeClass
   public static void setUp() throws Exception {
@@ -118,12 +126,21 @@ public class EciesAeadHkdfPrivateKeyManagerTest {
   @Test
   public void validateKeyFormat_noDem_throws() throws Exception {
     EciesAeadHkdfKeyFormat format =
-        createKeyFormat(
-            EllipticCurveType.NIST_P256,
-            HashType.SHA256,
-            EcPointFormat.UNCOMPRESSED,
-            KeyTemplate.create("", new byte[0], KeyTemplate.OutputPrefixType.TINK),
-            Hex.decode("aabbccddeeff"));
+        EciesAeadHkdfKeyFormat.newBuilder()
+            .setParams(
+                EciesAeadHkdfParams.newBuilder()
+                    .setKemParams(
+                        EciesHkdfKemParams.newBuilder()
+                            .setCurveType(EllipticCurveType.NIST_P256)
+                            .setHkdfHashType(HashType.SHA256)
+                            .setHkdfSalt(ByteString.copyFrom(Hex.decode("aabbccddeeff"))))
+                    .setDemParams(
+                        EciesAeadDemParams.newBuilder()
+                            .setAeadDem(
+                                com.google.crypto.tink.proto.KeyTemplate.newBuilder()
+                                    .setOutputPrefixType(OutputPrefixType.TINK)))
+                    .setEcPointFormat(EcPointFormat.UNCOMPRESSED))
+            .build();
     assertThrows(GeneralSecurityException.class, () -> factory.validateKeyFormat(format));
   }
 
@@ -318,53 +335,46 @@ public class EciesAeadHkdfPrivateKeyManagerTest {
   }
 
   @Test
-  public void testKeyTemplateAndManagerCompatibility() throws Exception {
-    EciesAeadHkdfPrivateKeyManager manager = new EciesAeadHkdfPrivateKeyManager();
+  public void testKeyTemplatesWork() throws Exception {
+    Parameters p =
+        EciesAeadHkdfPrivateKeyManager.eciesP256HkdfHmacSha256Aes128GcmTemplate().toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
 
-    testKeyTemplateCompatible(
-        manager, EciesAeadHkdfPrivateKeyManager.eciesP256HkdfHmacSha256Aes128GcmTemplate());
-    testKeyTemplateCompatible(
-        manager,
-        EciesAeadHkdfPrivateKeyManager.rawEciesP256HkdfHmacSha256Aes128GcmCompressedTemplate());
-    testKeyTemplateCompatible(
-        manager,
-        EciesAeadHkdfPrivateKeyManager.eciesP256HkdfHmacSha256Aes128CtrHmacSha256Template());
-    testKeyTemplateCompatible(
-        manager,
+    p =
+        EciesAeadHkdfPrivateKeyManager.rawEciesP256HkdfHmacSha256Aes128GcmCompressedTemplate()
+            .toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
+
+    p =
+        EciesAeadHkdfPrivateKeyManager.eciesP256HkdfHmacSha256Aes128CtrHmacSha256Template()
+            .toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
+
+    p =
         EciesAeadHkdfPrivateKeyManager
-            .rawEciesP256HkdfHmacSha256Aes128CtrHmacSha256CompressedTemplate());
+            .rawEciesP256HkdfHmacSha256Aes128CtrHmacSha256CompressedTemplate()
+            .toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
   }
 
-  @Test
-  public void testKeyFormats() throws Exception {
-    factory.validateKeyFormat(
-        factory.keyFormats().get("ECIES_P256_HKDF_HMAC_SHA256_AES128_GCM").keyFormat);
-    factory.validateKeyFormat(
-        factory.keyFormats().get("ECIES_P256_HKDF_HMAC_SHA256_AES128_GCM_RAW").keyFormat);
-    factory.validateKeyFormat(
-        factory.keyFormats().get("ECIES_P256_COMPRESSED_HKDF_HMAC_SHA256_AES128_GCM").keyFormat);
-    factory.validateKeyFormat(
-        factory
-            .keyFormats()
-            .get("ECIES_P256_COMPRESSED_HKDF_HMAC_SHA256_AES128_GCM_RAW")
-            .keyFormat);
+  @DataPoints("templateNames")
+  public static final String[] KEY_TEMPLATES =
+      new String[] {
+        "ECIES_P256_HKDF_HMAC_SHA256_AES128_GCM",
+        "ECIES_P256_HKDF_HMAC_SHA256_AES128_GCM_RAW",
+        "ECIES_P256_COMPRESSED_HKDF_HMAC_SHA256_AES128_GCM",
+        "ECIES_P256_COMPRESSED_HKDF_HMAC_SHA256_AES128_GCM_RAW",
+        "ECIES_P256_HKDF_HMAC_SHA256_AES128_CTR_HMAC_SHA256",
+        "ECIES_P256_HKDF_HMAC_SHA256_AES128_CTR_HMAC_SHA256_RAW",
+        "ECIES_P256_COMPRESSED_HKDF_HMAC_SHA256_AES128_CTR_HMAC_SHA256",
+        "ECIES_P256_COMPRESSED_HKDF_HMAC_SHA256_AES128_CTR_HMAC_SHA256_RAW",
+      };
 
-    factory.validateKeyFormat(
-        factory.keyFormats().get("ECIES_P256_HKDF_HMAC_SHA256_AES128_CTR_HMAC_SHA256").keyFormat);
-    factory.validateKeyFormat(
-        factory
-            .keyFormats()
-            .get("ECIES_P256_HKDF_HMAC_SHA256_AES128_CTR_HMAC_SHA256_RAW")
-            .keyFormat);
-    factory.validateKeyFormat(
-        factory
-            .keyFormats()
-            .get("ECIES_P256_COMPRESSED_HKDF_HMAC_SHA256_AES128_CTR_HMAC_SHA256")
-            .keyFormat);
-    factory.validateKeyFormat(
-        factory
-            .keyFormats()
-            .get("ECIES_P256_COMPRESSED_HKDF_HMAC_SHA256_AES128_CTR_HMAC_SHA256_RAW")
-            .keyFormat);
+  @Theory
+  public void testTemplates(@FromDataPoints("templateNames") String templateName) throws Exception {
+    KeysetHandle h = KeysetHandle.generateNew(KeyTemplates.get(templateName));
+    assertThat(h.size()).isEqualTo(1);
+    assertThat(h.getAt(0).getKey().getParameters())
+        .isEqualTo(KeyTemplates.get(templateName).toParameters());
   }
 }

@@ -19,12 +19,14 @@ package com.google.crypto.tink.prf;
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.internal.PrimitiveFactory;
+import com.google.crypto.tink.prf.internal.HmacPrfProtoSerialization;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.HmacPrfKey;
 import com.google.crypto.tink.proto.HmacPrfKeyFormat;
@@ -167,25 +169,10 @@ public final class HmacPrfKeyManager extends KeyTypeManager<HmacPrfKey> {
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<HmacPrfKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<HmacPrfKeyFormat>> result = new HashMap<>();
-        result.put(
-            "HMAC_SHA256_PRF",
-            new KeyFactory.KeyFormat<>(
-                HmacPrfKeyFormat.newBuilder()
-                    .setParams(HmacPrfParams.newBuilder().setHash(HashType.SHA256).build())
-                    .setKeySize(32)
-                    .build(),
-                KeyTemplate.OutputPrefixType.RAW));
-        result.put(
-            "HMAC_SHA512_PRF",
-            new KeyFactory.KeyFormat<>(
-                HmacPrfKeyFormat.newBuilder()
-                    .setParams(HmacPrfParams.newBuilder().setHash(HashType.SHA512).build())
-                    .setKeySize(64)
-                    .build(),
-                KeyTemplate.OutputPrefixType.RAW));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("HMAC_SHA256_PRF", PredefinedPrfParameters.HMAC_SHA256_PRF);
+        result.put("HMAC_SHA512_PRF", PredefinedPrfParameters.HMAC_SHA512_PRF);
         return Collections.unmodifiableMap(result);
       }
     };

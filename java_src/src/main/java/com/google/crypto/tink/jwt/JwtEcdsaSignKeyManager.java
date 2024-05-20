@@ -17,9 +17,11 @@ package com.google.crypto.tink.jwt;
 
 import static java.nio.charset.StandardCharsets.US_ASCII;
 
-import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.internal.PrivateKeyTypeManager;
 import com.google.crypto.tink.proto.JwtEcdsaAlgorithm;
@@ -193,29 +195,52 @@ public final class JwtEcdsaSignKeyManager
        * header.
        */
       @Override
-      public Map<String, KeyFactory.KeyFormat<JwtEcdsaKeyFormat>> keyFormats() {
-        Map<String, KeyFactory.KeyFormat<JwtEcdsaKeyFormat>> result = new HashMap<>();
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
         result.put(
             "JWT_ES256_RAW",
-            createKeyFormat(JwtEcdsaAlgorithm.ES256, KeyTemplate.OutputPrefixType.RAW));
+            JwtEcdsaParameters.builder()
+                .setAlgorithm(JwtEcdsaParameters.Algorithm.ES256)
+                .setKidStrategy(JwtEcdsaParameters.KidStrategy.IGNORED)
+                .build());
         result.put(
             "JWT_ES256",
-            createKeyFormat(JwtEcdsaAlgorithm.ES256, KeyTemplate.OutputPrefixType.TINK));
+            JwtEcdsaParameters.builder()
+                .setAlgorithm(JwtEcdsaParameters.Algorithm.ES256)
+                .setKidStrategy(JwtEcdsaParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                .build());
         result.put(
             "JWT_ES384_RAW",
-            createKeyFormat(JwtEcdsaAlgorithm.ES384, KeyTemplate.OutputPrefixType.RAW));
+            JwtEcdsaParameters.builder()
+                .setAlgorithm(JwtEcdsaParameters.Algorithm.ES384)
+                .setKidStrategy(JwtEcdsaParameters.KidStrategy.IGNORED)
+                .build());
         result.put(
             "JWT_ES384",
-            createKeyFormat(JwtEcdsaAlgorithm.ES384, KeyTemplate.OutputPrefixType.TINK));
+            JwtEcdsaParameters.builder()
+                .setAlgorithm(JwtEcdsaParameters.Algorithm.ES384)
+                .setKidStrategy(JwtEcdsaParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                .build());
         result.put(
             "JWT_ES512_RAW",
-            createKeyFormat(JwtEcdsaAlgorithm.ES512, KeyTemplate.OutputPrefixType.RAW));
+            JwtEcdsaParameters.builder()
+                .setAlgorithm(JwtEcdsaParameters.Algorithm.ES512)
+                .setKidStrategy(JwtEcdsaParameters.KidStrategy.IGNORED)
+                .build());
         result.put(
             "JWT_ES512",
-            createKeyFormat(JwtEcdsaAlgorithm.ES512, KeyTemplate.OutputPrefixType.TINK));
+            JwtEcdsaParameters.builder()
+                .setAlgorithm(JwtEcdsaParameters.Algorithm.ES512)
+                .setKidStrategy(JwtEcdsaParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                .build());
         return Collections.unmodifiableMap(result);
       }
     };
+  }
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_REQUIRES_BORINGCRYPTO;
   }
 
   /**
@@ -226,11 +251,8 @@ public final class JwtEcdsaSignKeyManager
     Registry.registerAsymmetricKeyManagers(
         new JwtEcdsaSignKeyManager(), new JwtEcdsaVerifyKeyManager(), newKeyAllowed);
     JwtEcdsaProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new JwtEcdsaSignKeyManager().keyFactory().namedParameters());
   }
 
-  private static KeyFactory.KeyFormat<JwtEcdsaKeyFormat> createKeyFormat(
-      JwtEcdsaAlgorithm algorithm, KeyTemplate.OutputPrefixType prefixType) {
-    JwtEcdsaKeyFormat format = JwtEcdsaKeyFormat.newBuilder().setAlgorithm(algorithm).build();
-    return new KeyFactory.KeyFormat<>(format, prefixType);
-  }
 }

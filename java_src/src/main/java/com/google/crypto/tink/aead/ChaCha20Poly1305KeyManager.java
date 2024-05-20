@@ -20,8 +20,10 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.ChaCha20Poly1305Key;
 import com.google.crypto.tink.proto.ChaCha20Poly1305KeyFormat;
@@ -108,17 +110,14 @@ public class ChaCha20Poly1305KeyManager extends KeyTypeManager<ChaCha20Poly1305K
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<ChaCha20Poly1305KeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<ChaCha20Poly1305KeyFormat>> result = new HashMap<>();
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
         result.put(
             "CHACHA20_POLY1305",
-            new KeyFactory.KeyFormat<>(
-                ChaCha20Poly1305KeyFormat.getDefaultInstance(), KeyTemplate.OutputPrefixType.TINK));
+            ChaCha20Poly1305Parameters.create(ChaCha20Poly1305Parameters.Variant.TINK));
         result.put(
             "CHACHA20_POLY1305_RAW",
-            new KeyFactory.KeyFormat<>(
-                ChaCha20Poly1305KeyFormat.getDefaultInstance(), KeyTemplate.OutputPrefixType.RAW));
+            ChaCha20Poly1305Parameters.create(ChaCha20Poly1305Parameters.Variant.NO_PREFIX));
         return Collections.unmodifiableMap(result);
       }
     };
@@ -127,6 +126,8 @@ public class ChaCha20Poly1305KeyManager extends KeyTypeManager<ChaCha20Poly1305K
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new ChaCha20Poly1305KeyManager(), newKeyAllowed);
     ChaCha20Poly1305ProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new ChaCha20Poly1305KeyManager().keyFactory().namedParameters());
   }
 
   /**

@@ -19,9 +19,11 @@ package com.google.crypto.tink.signature;
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.PublicKeySign;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.internal.PrivateKeyTypeManager;
 import com.google.crypto.tink.proto.Ed25519KeyFormat;
@@ -146,24 +148,15 @@ public final class Ed25519PrivateKeyManager
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<Ed25519KeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<Ed25519KeyFormat>> result = new HashMap<>();
-        result.put(
-            "ED25519",
-            new KeyFormat<>(
-                Ed25519KeyFormat.getDefaultInstance(), KeyTemplate.OutputPrefixType.TINK));
-        result.put(
-            "ED25519_RAW",
-            new KeyFormat<>(
-                Ed25519KeyFormat.getDefaultInstance(), KeyTemplate.OutputPrefixType.RAW));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("ED25519", Ed25519Parameters.create(Ed25519Parameters.Variant.TINK));
+        result.put("ED25519_RAW", Ed25519Parameters.create(Ed25519Parameters.Variant.NO_PREFIX));
         // This is identical to ED25519_RAW.
         // It is needed to maintain backward compatibility with SignatureKeyTemplates.
         // TODO(b/185475349): remove this in 2.0.0.
         result.put(
-            "ED25519WithRawOutput",
-            new KeyFormat<>(
-                Ed25519KeyFormat.getDefaultInstance(), KeyTemplate.OutputPrefixType.RAW));
+            "ED25519WithRawOutput", Ed25519Parameters.create(Ed25519Parameters.Variant.NO_PREFIX));
         return Collections.unmodifiableMap(result);
       }
     };
@@ -177,6 +170,8 @@ public final class Ed25519PrivateKeyManager
     Registry.registerAsymmetricKeyManagers(
         new Ed25519PrivateKeyManager(), new Ed25519PublicKeyManager(), newKeyAllowed);
     Ed25519ProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new Ed25519PrivateKeyManager().keyFactory().namedParameters());
   }
 
   /**

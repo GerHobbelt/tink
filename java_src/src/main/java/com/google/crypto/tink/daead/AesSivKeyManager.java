@@ -20,8 +20,10 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.DeterministicAead;
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.AesSivKey;
 import com.google.crypto.tink.proto.AesSivKeyFormat;
@@ -139,19 +141,15 @@ public final class AesSivKeyManager extends KeyTypeManager<AesSivKey> {
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<AesSivKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<AesSivKeyFormat>> result = new HashMap<>();
-        result.put(
-            "AES256_SIV",
-            new KeyFactory.KeyFormat<>(
-                AesSivKeyFormat.newBuilder().setKeySize(KEY_SIZE_IN_BYTES).build(),
-                KeyTemplate.OutputPrefixType.TINK));
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
+        result.put("AES256_SIV", PredefinedDeterministicAeadParameters.AES256_SIV);
         result.put(
             "AES256_SIV_RAW",
-            new KeyFactory.KeyFormat<>(
-                AesSivKeyFormat.newBuilder().setKeySize(KEY_SIZE_IN_BYTES).build(),
-                KeyTemplate.OutputPrefixType.RAW));
+            AesSivParameters.builder()
+                .setKeySizeBytes(64)
+                .setVariant(AesSivParameters.Variant.NO_PREFIX)
+                .build());
         return Collections.unmodifiableMap(result);
       }
     };
@@ -160,6 +158,8 @@ public final class AesSivKeyManager extends KeyTypeManager<AesSivKey> {
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new AesSivKeyManager(), newKeyAllowed);
     AesSivProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new AesSivKeyManager().keyFactory().namedParameters());
   }
 
   /**

@@ -17,30 +17,30 @@
 package com.google.crypto.tink.jwt;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.crypto.tink.testing.KeyTypeManagerTestUtil.testKeyTemplateCompatible;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
 
-import com.google.crypto.tink.CleartextKeysetHandle;
+import com.google.crypto.tink.InsecureSecretKeyAccess;
 import com.google.crypto.tink.Key;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
+import com.google.crypto.tink.Parameters;
+import com.google.crypto.tink.TinkProtoKeysetFormat;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.proto.JwtHmacAlgorithm;
 import com.google.crypto.tink.proto.JwtHmacKey;
 import com.google.crypto.tink.proto.JwtHmacKey.CustomKid;
 import com.google.crypto.tink.proto.JwtHmacKeyFormat;
 import com.google.crypto.tink.proto.KeyData;
-import com.google.crypto.tink.proto.KeyStatusType;
 import com.google.crypto.tink.proto.Keyset;
-import com.google.crypto.tink.proto.OutputPrefixType;
 import com.google.crypto.tink.subtle.Base64;
 import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.subtle.PrfHmacJce;
 import com.google.crypto.tink.subtle.PrfMac;
 import com.google.crypto.tink.subtle.Random;
 import com.google.crypto.tink.testing.TestUtil;
+import com.google.crypto.tink.util.SecretBytes;
 import com.google.gson.JsonObject;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
@@ -55,6 +55,8 @@ import javax.crypto.spec.SecretKeySpec;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.theories.DataPoint;
+import org.junit.experimental.theories.DataPoints;
+import org.junit.experimental.theories.FromDataPoints;
 import org.junit.experimental.theories.Theories;
 import org.junit.experimental.theories.Theory;
 import org.junit.runner.RunWith;
@@ -111,12 +113,18 @@ public class JwtHmacKeyManagerTest {
         () -> factory.validateKeyFormat(makeJwtHmacKeyFormat(63, JwtHmacAlgorithm.HS512)));
   }
 
-  @Test
-  public void testKeyFormatsAreValid() throws Exception {
-    for (KeyTypeManager.KeyFactory.KeyFormat<JwtHmacKeyFormat> format :
-        factory.keyFormats().values()) {
-      factory.validateKeyFormat(format.keyFormat);
-    }
+  @DataPoints("templateNames")
+  public static final String[] KEY_TEMPLATES =
+      new String[] {
+        "JWT_HS256_RAW", "JWT_HS256", "JWT_HS384_RAW", "JWT_HS384", "JWT_HS512_RAW", "JWT_HS512",
+      };
+
+  @Theory
+  public void testTemplates(@FromDataPoints("templateNames") String templateName) throws Exception {
+    KeysetHandle h = KeysetHandle.generateNew(KeyTemplates.get(templateName));
+    assertThat(h.size()).isEqualTo(1);
+    assertThat(h.getAt(0).getKey().getParameters())
+        .isEqualTo(KeyTemplates.get(templateName).toParameters());
   }
 
   @Test
@@ -290,11 +298,18 @@ public class JwtHmacKeyManagerTest {
   }
 
   @Test
-  public void testKeyTemplateAndManagerCompatibility() throws Exception {
-    testKeyTemplateCompatible(manager, KeyTemplates.get("JWT_HS256"));
-    testKeyTemplateCompatible(manager, KeyTemplates.get("JWT_HS384"));
-    testKeyTemplateCompatible(manager, KeyTemplates.get("JWT_HS512"));
-    testKeyTemplateCompatible(manager, KeyTemplates.get("JWT_HS512_RAW"));
+  public void testKeyTemplatesWork() throws Exception {
+    Parameters p = KeyTemplates.get("JWT_HS256").toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
+
+    p = KeyTemplates.get("JWT_HS384").toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
+
+    p = KeyTemplates.get("JWT_HS512").toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
+
+    p = KeyTemplates.get("JWT_HS512_RAW").toParameters();
+    assertThat(KeysetHandle.generateNew(p).getAt(0).getKey().getParameters()).isEqualTo(p);
   }
 
   @Test
@@ -660,11 +675,10 @@ public class JwtHmacKeyManagerTest {
   public void createSignVerifyRaw_withDifferentHeaders() throws Exception {
     KeyTemplate template = KeyTemplates.get("JWT_HS256_RAW");
     KeysetHandle handle = KeysetHandle.generateNew(template);
-    Keyset keyset = CleartextKeysetHandle.getKeyset(handle);
-    JwtHmacKey keyProto =
-        JwtHmacKey.parseFrom(
-            keyset.getKey(0).getKeyData().getValue(), ExtensionRegistryLite.getEmptyRegistry());
-    byte[] keyValue = keyProto.getKeyValue().toByteArray();
+    com.google.crypto.tink.jwt.JwtHmacKey key =
+        (com.google.crypto.tink.jwt.JwtHmacKey) handle.getAt(0).getKey();
+
+    byte[] keyValue = key.getKeyBytes().toByteArray(InsecureSecretKeyAccess.get());
     SecretKeySpec keySpec = new SecretKeySpec(keyValue, "HMAC");
     PrfHmacJce prf = new PrfHmacJce("HMACSHA256", keySpec);
     PrfMac rawPrimitive = new PrfMac(prf, prf.getMaxOutputLength());
@@ -721,17 +735,15 @@ public class JwtHmacKeyManagerTest {
   public void createSignVerifyTink_withDifferentHeaders() throws Exception {
     KeyTemplate template = KeyTemplates.get("JWT_HS256");
     KeysetHandle handle = KeysetHandle.generateNew(template);
-    Keyset keyset = CleartextKeysetHandle.getKeyset(handle);
-    JwtHmacKey keyProto =
-        JwtHmacKey.parseFrom(
-            keyset.getKey(0).getKeyData().getValue(), ExtensionRegistryLite.getEmptyRegistry());
-    byte[] keyValue = keyProto.getKeyValue().toByteArray();
+    com.google.crypto.tink.jwt.JwtHmacKey key =
+        (com.google.crypto.tink.jwt.JwtHmacKey) handle.getAt(0).getKey();
+
+    byte[] keyValue = key.getKeyBytes().toByteArray(InsecureSecretKeyAccess.get());
     SecretKeySpec keySpec = new SecretKeySpec(keyValue, "HMAC");
     PrfHmacJce prf = new PrfHmacJce("HMACSHA256", keySpec);
     PrfMac rawPrimitive = new PrfMac(prf, prf.getMaxOutputLength());
     JwtMac primitive = handle.getPrimitive(JwtMac.class);
-    String kid =
-        JwtFormat.getKid(keyset.getKey(0).getKeyId(), keyset.getKey(0).getOutputPrefixType()).get();
+    String kid = key.getKid().get();
 
     JsonObject payload = new JsonObject();
     payload.addProperty("jti", "jwtId");
@@ -789,25 +801,21 @@ public class JwtHmacKeyManagerTest {
   private static KeysetHandle getRfc7515ExampleKeysetHandle() throws Exception {
     String keyValue =
         "AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow";
-    JwtHmacKey key =
-        JwtHmacKey.newBuilder()
-            .setVersion(0)
-            .setAlgorithm(JwtHmacAlgorithm.HS256)
-            .setKeyValue(ByteString.copyFrom(Base64.urlSafeDecode(keyValue)))
+    JwtHmacParameters parameters =
+        JwtHmacParameters.builder()
+            .setKeySizeBytes(64)
+            .setKidStrategy(JwtHmacParameters.KidStrategy.IGNORED)
+            .setAlgorithm(JwtHmacParameters.Algorithm.HS256)
             .build();
-    KeyData keyData = KeyData.newBuilder()
-          .setTypeUrl("type.googleapis.com/google.crypto.tink.JwtHmacKey")
-          .setValue(key.toByteString())
-          .setKeyMaterialType(KeyData.KeyMaterialType.SYMMETRIC)
-          .build();
-    Keyset.Key keySetKey = Keyset.Key.newBuilder()
-        .setKeyData(keyData)
-        .setKeyId(123)
-        .setStatus(KeyStatusType.ENABLED)
-        .setOutputPrefixType(OutputPrefixType.RAW)
+    com.google.crypto.tink.jwt.JwtHmacKey newKey =
+        com.google.crypto.tink.jwt.JwtHmacKey.builder()
+            .setParameters(parameters)
+            .setKeyBytes(
+                SecretBytes.copyFrom(Base64.urlSafeDecode(keyValue), InsecureSecretKeyAccess.get()))
+            .build();
+    return KeysetHandle.newBuilder()
+        .addEntry(KeysetHandle.importKey(newKey).withFixedId(123).makePrimary())
         .build();
-    Keyset keyset = Keyset.newBuilder().addKey(keySetKey).setPrimaryKeyId(123).build();
-    return CleartextKeysetHandle.fromKeyset(keyset);
   }
 
   // Test vectors copied from https://tools.ietf.org/html/rfc7515#appendix-A.1.
@@ -859,18 +867,25 @@ public class JwtHmacKeyManagerTest {
   /* Create a new keyset handle with the "custom_kid" value set. */
   private KeysetHandle withCustomKid(KeysetHandle keysetHandle, String customKid)
       throws Exception {
-    Keyset keyset = CleartextKeysetHandle.getKeyset(keysetHandle);
-    JwtHmacKey hmacKey =
-        JwtHmacKey.parseFrom(
-            keyset.getKey(0).getKeyData().getValue(), ExtensionRegistryLite.getEmptyRegistry());
-    JwtHmacKey hmacKeyWithKid =
-        hmacKey.toBuilder()
-            .setCustomKid(CustomKid.newBuilder().setValue(customKid).build())
+    com.google.crypto.tink.jwt.JwtHmacKey key =
+        (com.google.crypto.tink.jwt.JwtHmacKey) keysetHandle.getAt(0).getKey();
+
+    JwtHmacParameters newParameters =
+        JwtHmacParameters.builder()
+            .setKeySizeBytes(key.getParameters().getKeySizeBytes())
+            .setKidStrategy(JwtHmacParameters.KidStrategy.CUSTOM)
+            .setAlgorithm(key.getParameters().getAlgorithm())
             .build();
-    KeyData keyDataWithKid =
-        keyset.getKey(0).getKeyData().toBuilder().setValue(hmacKeyWithKid.toByteString()).build();
-    Keyset.Key keyWithKid = keyset.getKey(0).toBuilder().setKeyData(keyDataWithKid).build();
-    return CleartextKeysetHandle.fromKeyset(keyset.toBuilder().setKey(0, keyWithKid).build());
+    com.google.crypto.tink.jwt.JwtHmacKey newKey =
+        com.google.crypto.tink.jwt.JwtHmacKey.builder()
+            .setParameters(newParameters)
+            .setCustomKid(customKid)
+            .setKeyBytes(key.getKeyBytes())
+            .build();
+
+    return KeysetHandle.newBuilder()
+        .addEntry(KeysetHandle.importKey(newKey).withFixedId(123).makePrimary())
+        .build();
   }
 
   @Test
@@ -930,7 +945,11 @@ public class JwtHmacKeyManagerTest {
     KeysetHandle handle = KeysetHandle.generateNew(template);
 
     // Create a new handle with the "kid" value set.
-    Keyset keyset = CleartextKeysetHandle.getKeyset(handle);
+    Keyset keyset =
+        Keyset.parseFrom(
+            TinkProtoKeysetFormat.serializeKeyset(handle, InsecureSecretKeyAccess.get()),
+            ExtensionRegistryLite.getEmptyRegistry());
+
     JwtHmacKey hmacKey =
         JwtHmacKey.parseFrom(
             keyset.getKey(0).getKeyData().getValue(), ExtensionRegistryLite.getEmptyRegistry());
@@ -944,9 +963,13 @@ public class JwtHmacKeyManagerTest {
     KeyData keyDataWithKid =
         keyset.getKey(0).getKeyData().toBuilder().setValue(hmacKeyWithKid.toByteString()).build();
     Keyset.Key keyWithKid = keyset.getKey(0).toBuilder().setKeyData(keyDataWithKid).build();
-    KeysetHandle handleWithKid =
-        CleartextKeysetHandle.fromKeyset(keyset.toBuilder().setKey(0, keyWithKid).build());
-
-    assertThrows(GeneralSecurityException.class, () -> handleWithKid.getPrimitive(JwtMac.class));
+    byte[] serializeKeysetWithKid = keyset.toBuilder().setKey(0, keyWithKid).build().toByteArray();
+    // A key with OutputPrefixType TINK and a KID value set needs to be rejected either when parsing
+    // or when we call getPrimitive.
+    assertThrows(
+        GeneralSecurityException.class,
+        () ->
+            TinkProtoKeysetFormat.parseKeyset(serializeKeysetWithKid, InsecureSecretKeyAccess.get())
+                .getPrimitive(JwtMac.class));
   }
 }

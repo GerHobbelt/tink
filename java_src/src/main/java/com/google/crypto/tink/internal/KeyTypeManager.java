@@ -16,7 +16,7 @@
 
 package com.google.crypto.tink.internal;
 
-import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.annotations.Alpha;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
@@ -174,20 +174,6 @@ public abstract class KeyTypeManager<KeyProtoT extends MessageLite> {
     }
 
     /**
-     * A container that contains key format and other information that form key templates supported
-     * by this factory.
-     */
-    public static final class KeyFormat<KeyFormatProtoT> {
-      public KeyFormatProtoT keyFormat;
-      public KeyTemplate.OutputPrefixType outputPrefixType;
-
-      public KeyFormat(KeyFormatProtoT keyFormat, KeyTemplate.OutputPrefixType outputPrefixType) {
-        this.keyFormat = keyFormat;
-        this.outputPrefixType = outputPrefixType;
-      }
-    }
-
-    /**
      * Returns the class corresponding to the key format protobuffer.
      */
     public final Class<KeyFormatProtoT> getKeyFormatClass() {
@@ -234,12 +220,13 @@ public abstract class KeyTypeManager<KeyProtoT extends MessageLite> {
     }
 
     /**
-     * Returns supported key formats and their names.
+     * Returns supported parameters and their names. Subclasses should override this if it should
+     * not return the empty map.
      *
      * @throws GeneralSecurityException Key type managers can throw GeneralSecurityException when
      *     their key formats depend on other key formats that were not registered.
      */
-    public Map<String, KeyFormat<KeyFormatProtoT>> keyFormats() throws GeneralSecurityException {
+    public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
       return Collections.emptyMap();
     }
 

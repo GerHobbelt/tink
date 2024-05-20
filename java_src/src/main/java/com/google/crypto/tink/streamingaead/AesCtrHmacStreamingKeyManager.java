@@ -19,9 +19,11 @@ package com.google.crypto.tink.streamingaead;
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
 import com.google.crypto.tink.KeyTemplate;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.StreamingAead;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.AesCtrHmacStreamingKey;
 import com.google.crypto.tink.proto.AesCtrHmacStreamingKeyFormat;
@@ -134,29 +136,20 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
       }
 
       @Override
-      public Map<String, KeyFactory.KeyFormat<AesCtrHmacStreamingKeyFormat>> keyFormats()
-          throws GeneralSecurityException {
-        Map<String, KeyFactory.KeyFormat<AesCtrHmacStreamingKeyFormat>> result = new HashMap<>();
+      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+        Map<String, Parameters> result = new HashMap<>();
         result.put(
             "AES128_CTR_HMAC_SHA256_4KB",
-            new KeyFactory.KeyFormat<>(
-                createKeyFormat(16, HashType.SHA256, 16, HashType.SHA256, 32, 4096),
-                KeyTemplate.OutputPrefixType.RAW));
+            PredefinedStreamingAeadParameters.AES128_CTR_HMAC_SHA256_4KB);
         result.put(
             "AES128_CTR_HMAC_SHA256_1MB",
-            new KeyFactory.KeyFormat<>(
-                createKeyFormat(16, HashType.SHA256, 16, HashType.SHA256, 32, 1 << 20),
-                KeyTemplate.OutputPrefixType.RAW));
+            PredefinedStreamingAeadParameters.AES128_CTR_HMAC_SHA256_1MB);
         result.put(
             "AES256_CTR_HMAC_SHA256_4KB",
-            new KeyFactory.KeyFormat<>(
-                createKeyFormat(32, HashType.SHA256, 32, HashType.SHA256, 32, 4096),
-                KeyTemplate.OutputPrefixType.RAW));
+            PredefinedStreamingAeadParameters.AES256_CTR_HMAC_SHA256_4KB);
         result.put(
             "AES256_CTR_HMAC_SHA256_1MB",
-            new KeyFactory.KeyFormat<>(
-                createKeyFormat(32, HashType.SHA256, 32, HashType.SHA256, 32, 1 << 20),
-                KeyTemplate.OutputPrefixType.RAW));
+            PredefinedStreamingAeadParameters.AES256_CTR_HMAC_SHA256_1MB);
         return Collections.unmodifiableMap(result);
       }
     };
@@ -215,6 +208,8 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new AesCtrHmacStreamingKeyManager(), newKeyAllowed);
     AesCtrHmacStreamingProtoSerialization.register();
+    MutableParametersRegistry.globalInstance()
+        .putAll(new AesCtrHmacStreamingKeyManager().keyFactory().namedParameters());
   }
 
   /**
@@ -322,25 +317,4 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
   }
 
 
-  private static AesCtrHmacStreamingKeyFormat createKeyFormat(
-      int mainKeySize,
-      HashType hkdfHashType,
-      int derivedKeySize,
-      HashType macHashType,
-      int tagSize,
-      int ciphertextSegmentSize) {
-    HmacParams hmacParams =
-        HmacParams.newBuilder().setHash(macHashType).setTagSize(tagSize).build();
-    AesCtrHmacStreamingParams params =
-        AesCtrHmacStreamingParams.newBuilder()
-            .setCiphertextSegmentSize(ciphertextSegmentSize)
-            .setDerivedKeySize(derivedKeySize)
-            .setHkdfHashType(hkdfHashType)
-            .setHmacParams(hmacParams)
-            .build();
-    return AesCtrHmacStreamingKeyFormat.newBuilder()
-        .setParams(params)
-        .setKeySize(mainKeySize)
-        .build();
-  }
 }
