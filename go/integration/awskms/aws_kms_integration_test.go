@@ -11,13 +11,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package awskms_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,8 +37,8 @@ const (
 )
 
 var (
-	credCSVFile = "tink_go/testdata/aws/credentials.csv"
-	credINIFile = "tink_go/testdata/aws/credentials.ini"
+	credCSVFile = "testdata/aws/credentials.csv"
+	credINIFile = "testdata/aws/credentials.ini"
 )
 
 func init() {
@@ -48,12 +47,24 @@ func init() {
 	os.Setenv("SSL_CERT_FILE", certPath)
 }
 
-func TestNewClientWithCredentialsGetAEADEncryptDecrypt(t *testing.T) {
+func getTestFilePath(filename string) (string, error) {
 	srcDir, ok := os.LookupEnv("TEST_SRCDIR")
 	if !ok {
-		t.Skip("TEST_SRCDIR not set")
+		return "", errors.New("TEST_SRCDIR not set")
 	}
-	client, err := awskms.NewClientWithOptions(keyURI, awskms.WithCredentialPath(filepath.Join(srcDir, credCSVFile)))
+	workspaceDir, ok := os.LookupEnv("TEST_WORKSPACE")
+	if !ok {
+		return "", errors.New("TEST_WORKSPACE not set")
+	}
+	return filepath.Join(srcDir, workspaceDir, filename), nil
+}
+
+func TestNewClientWithCredentialsGetAEADEncryptDecrypt(t *testing.T) {
+	credFilePath, err := getTestFilePath(credCSVFile)
+	if err != nil {
+		t.Skip(err)
+	}
+	client, err := awskms.NewClientWithOptions(keyURI, awskms.WithCredentialPath(credFilePath))
 	if err != nil {
 		t.Fatalf("error setting up AWS client: %v", err)
 	}
@@ -83,11 +94,11 @@ func TestNewClientWithCredentialsGetAEADEncryptDecrypt(t *testing.T) {
 }
 
 func TestEmptyAssociatedDataEncryptDecrypt(t *testing.T) {
-	srcDir, ok := os.LookupEnv("TEST_SRCDIR")
-	if !ok {
-		t.Skip("TEST_SRCDIR not set")
+	credFilePath, err := getTestFilePath(credCSVFile)
+	if err != nil {
+		t.Skip(err)
 	}
-	client, err := awskms.NewClientWithOptions(keyURI, awskms.WithCredentialPath(filepath.Join(srcDir, credCSVFile)))
+	client, err := awskms.NewClientWithOptions(keyURI, awskms.WithCredentialPath(credFilePath))
 	if err != nil {
 		t.Fatalf("error setting up AWS client: %v", err)
 	}
@@ -119,12 +130,11 @@ func TestEmptyAssociatedDataEncryptDecrypt(t *testing.T) {
 }
 
 func TestKeyCommitment(t *testing.T) {
-	srcDir, ok := os.LookupEnv("TEST_SRCDIR")
-	if !ok {
-		t.Skip("TEST_SRCDIR not set")
+	credFilePath, err := getTestFilePath(credCSVFile)
+	if err != nil {
+		t.Skip(err)
 	}
-
-	client, err := awskms.NewClientWithOptions(keyPrefix, awskms.WithCredentialPath(filepath.Join(srcDir, credCSVFile)))
+	client, err := awskms.NewClientWithOptions(keyPrefix, awskms.WithCredentialPath(credFilePath))
 	if err != nil {
 		t.Fatalf("error setting up AWS client: %v", err)
 	}
@@ -163,15 +173,12 @@ func TestKeyCommitment(t *testing.T) {
 }
 
 func TestKMSEnvelopeAEADEncryptAndDecrypt(t *testing.T) {
-	srcDir, ok := os.LookupEnv("TEST_SRCDIR")
-	if !ok {
-		t.Skip("TEST_SRCDIR not set")
-	}
-
 	for _, credFile := range []string{credCSVFile, credINIFile} {
-		credPath := filepath.Join(srcDir, credFile)
-
-		client, err := awskms.NewClientWithOptions(keyURI, awskms.WithCredentialPath(credPath))
+		credFilePath, err := getTestFilePath(credFile)
+		if err != nil {
+			t.Skip(err)
+		}
+		client, err := awskms.NewClientWithOptions(keyURI, awskms.WithCredentialPath(credFilePath))
 		if err != nil {
 			t.Fatalf("awskms.NewClientWithOptions() err = %q, want nil", err)
 		}

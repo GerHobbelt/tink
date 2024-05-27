@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package aead
 
@@ -50,7 +48,7 @@ var _ registry.KeyManager = (*xChaCha20Poly1305KeyManager)(nil)
 
 // Primitive constructs a XChaCha20Poly1305 for the given serialized
 // XChaCha20Poly1305Key.
-func (km *xChaCha20Poly1305KeyManager) Primitive(serializedKey []byte) (interface{}, error) {
+func (km *xChaCha20Poly1305KeyManager) Primitive(serializedKey []byte) (any, error) {
 	if len(serializedKey) == 0 {
 		return nil, errInvalidXChaCha20Poly1305Key
 	}

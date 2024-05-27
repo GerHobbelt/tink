@@ -17,7 +17,6 @@
 package com.google.crypto.tink.internal;
 
 import com.google.crypto.tink.KeyStatus;
-import com.google.crypto.tink.PrimitiveSet;
 import com.google.crypto.tink.monitoring.MonitoringClient;
 import com.google.crypto.tink.monitoring.MonitoringKeysetInfo;
 import com.google.crypto.tink.proto.KeyStatusType;
@@ -68,7 +67,7 @@ public final class MonitoringUtil {
         builder.addEntry(
             parseStatus(entry.getStatus()),
             entry.getKeyId(),
-            parseKeyTypeUrl(entry.getKeyType()),
+            parseKeyTypeUrl(entry.getKeyTypeUrl()),
             entry.getOutputPrefixType().name());
       }
     }

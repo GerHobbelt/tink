@@ -10,13 +10,13 @@ tink_cc_library(
   DEPS
     tink::hybrid::ecies_aead_hkdf_private_key_manager
     tink::hybrid::ecies_aead_hkdf_public_key_manager
+    tink::hybrid::ecies_proto_serialization
     tink::hybrid::hybrid_decrypt_wrapper
     tink::hybrid::hybrid_encrypt_wrapper
     absl::core_headers
     absl::memory
     tink::core::registry
     tink::aead::aead_config
-    tink::config::config_util
     tink::config::tink_fips
     tink::util::status
     tink::proto::config_cc_proto
@@ -48,6 +48,7 @@ tink_cc_library(
     hybrid_decrypt_wrapper.cc
     hybrid_decrypt_wrapper.h
   DEPS
+    absl::memory
     absl::status
     absl::strings
     tink::core::crypto_format
@@ -69,6 +70,7 @@ tink_cc_library(
     hybrid_encrypt_wrapper.cc
     hybrid_encrypt_wrapper.h
   DEPS
+    absl::memory
     absl::status
     absl::strings
     tink::core::crypto_format
@@ -151,6 +153,7 @@ tink_cc_library(
     tink::util::errors
     tink::util::protobuf_helper
     tink::util::secret_data
+    tink::util::status
     tink::util::statusor
     tink::proto::aes_ctr_cc_proto
     tink::proto::aes_ctr_hmac_aead_cc_proto
@@ -171,6 +174,7 @@ tink_cc_library(
     tink::hybrid::ecies_aead_hkdf_dem_helper
     absl::memory
     absl::status
+    absl::string_view
     tink::core::hybrid_decrypt
     tink::internal::ec_util
     tink::subtle::ecies_hkdf_recipient_kem_boringssl
@@ -213,6 +217,7 @@ tink_cc_library(
     absl::strings
     tink::core::key_type_manager
     tink::core::private_key_type_manager
+    tink::core::template_util
     tink::core::hybrid_decrypt
     tink::core::key_manager
     tink::internal::ec_util
@@ -239,6 +244,7 @@ tink_cc_library(
     absl::status
     absl::strings
     tink::core::key_type_manager
+    tink::core::template_util
     tink::core::hybrid_encrypt
     tink::core::key_manager
     tink::util::constants
@@ -258,9 +264,13 @@ tink_cc_library(
     failing_hybrid.cc
     failing_hybrid.h
   DEPS
+    absl::memory
+    absl::status
     absl::strings
     tink::core::hybrid_decrypt
     tink::core::hybrid_encrypt
+    tink::util::status
+    tink::util::statusor
 )
 
 tink_cc_library(
@@ -289,6 +299,7 @@ tink_cc_library(
     tink::hybrid::hybrid_parameters
     tink::hybrid::hybrid_public_key
     absl::strings
+    absl::optional
     tink::core::key
     tink::core::private_key
 )
@@ -384,6 +395,174 @@ tink_cc_library(
     tink::proto::tink_cc_proto
 )
 
+tink_cc_library(
+  NAME config_v0
+  SRCS
+    config_v0.cc
+    config_v0.h
+  DEPS
+    absl::check
+    tink::core::configuration
+    tink::hybrid::internal::config_v0
+  TAGS
+    exclude_if_openssl
+)
+
+tink_cc_library(
+  NAME config_v0_openssl
+  SRCS
+    config_v0.cc
+    config_v0.h
+  DEPS
+    absl::check
+    tink::core::configuration
+    tink::hybrid::internal::config_v0_openssl
+  TAGS
+    exclude_if_boringssl
+)
+
+tink_cc_library(
+  NAME key_gen_config_v0
+  SRCS
+    key_gen_config_v0.cc
+    key_gen_config_v0.h
+  DEPS
+    absl::check
+    tink::core::key_gen_configuration
+    tink::hybrid::internal::key_gen_config_v0
+  TAGS
+    exclude_if_openssl
+)
+
+tink_cc_library(
+  NAME key_gen_config_v0_openssl
+  SRCS
+    key_gen_config_v0.cc
+    key_gen_config_v0.h
+  DEPS
+    absl::check
+    tink::core::key_gen_configuration
+    tink::hybrid::internal::key_gen_config_v0_openssl
+  TAGS
+    exclude_if_boringssl
+)
+
+tink_cc_library(
+  NAME ecies_parameters
+  SRCS
+    ecies_parameters.cc
+    ecies_parameters.h
+  DEPS
+    tink::hybrid::hybrid_parameters
+    absl::core_headers
+    absl::status
+    absl::strings
+    absl::optional
+    tink::core::parameters
+    tink::aead::aes_ctr_hmac_aead_parameters
+    tink::aead::aes_gcm_parameters
+    tink::aead::xchacha20_poly1305_parameters
+    tink::daead::aes_siv_parameters
+    tink::util::status
+    tink::util::statusor
+)
+
+tink_cc_library(
+  NAME ecies_public_key
+  SRCS
+    ecies_public_key.cc
+    ecies_public_key.h
+  DEPS
+    tink::hybrid::ecies_parameters
+    tink::hybrid::hybrid_public_key
+    absl::status
+    absl::strings
+    absl::str_format
+    absl::optional
+    crypto
+    tink::core::ec_point
+    tink::core::key
+    tink::core::partial_key_access_token
+    tink::internal::ec_util
+    tink::internal::ssl_unique_ptr
+    tink::subtle::common_enums
+    tink::subtle::subtle_util
+    tink::util::status
+    tink::util::statusor
+)
+
+tink_cc_library(
+  NAME ecies_private_key
+  SRCS
+    ecies_private_key.cc
+    ecies_private_key.h
+  DEPS
+    tink::hybrid::ecies_parameters
+    tink::hybrid::ecies_public_key
+    tink::hybrid::hybrid_private_key
+    absl::status
+    absl::strings
+    absl::str_format
+    absl::optional
+    crypto
+    tink::core::ec_point
+    tink::core::insecure_secret_key_access
+    tink::core::key
+    tink::core::partial_key_access_token
+    tink::core::restricted_big_integer
+    tink::core::restricted_data
+    tink::internal::bn_util
+    tink::internal::ec_util
+    tink::internal::err_util
+    tink::internal::ssl_unique_ptr
+    tink::subtle::common_enums
+    tink::util::secret_data
+    tink::util::status
+    tink::util::statusor
+)
+
+tink_cc_library(
+  NAME ecies_proto_serialization
+  SRCS
+    ecies_proto_serialization.cc
+    ecies_proto_serialization.h
+  DEPS
+    tink::hybrid::ecies_parameters
+    tink::hybrid::ecies_private_key
+    tink::hybrid::ecies_public_key
+    absl::core_headers
+    absl::status
+    absl::strings
+    absl::optional
+    crypto
+    tink::core::big_integer
+    tink::core::ec_point
+    tink::core::insecure_secret_key_access
+    tink::core::partial_key_access
+    tink::core::restricted_big_integer
+    tink::core::restricted_data
+    tink::core::secret_key_access_token
+    tink::internal::bn_encoding_util
+    tink::internal::key_parser
+    tink::internal::key_serializer
+    tink::internal::mutable_serialization_registry
+    tink::internal::parameters_parser
+    tink::internal::parameters_serializer
+    tink::internal::proto_key_serialization
+    tink::internal::proto_parameters_serialization
+    tink::util::status
+    tink::util::statusor
+    tink::proto::aes_ctr_cc_proto
+    tink::proto::aes_ctr_hmac_aead_cc_proto
+    tink::proto::aes_gcm_cc_proto
+    tink::proto::aes_siv_cc_proto
+    tink::proto::common_cc_proto
+    tink::proto::ecies_aead_hkdf_cc_proto
+    tink::proto::hmac_cc_proto
+    tink::proto::tink_cc_proto
+    tink::proto::xchacha20_poly1305_cc_proto
+)
+
 # tests
 
 tink_cc_test(
@@ -393,19 +572,44 @@ tink_cc_test(
   DEPS
     tink::hybrid::ecies_aead_hkdf_private_key_manager
     tink::hybrid::ecies_aead_hkdf_public_key_manager
+    tink::hybrid::ecies_parameters
+    tink::hybrid::ecies_private_key
+    tink::hybrid::ecies_public_key
     tink::hybrid::hybrid_config
     tink::hybrid::hybrid_key_templates
     gmock
+    absl::memory
     absl::status
+    absl::strings
+    absl::optional
     crypto
+    tink::core::crypto_format
     tink::core::hybrid_decrypt
     tink::core::hybrid_encrypt
+    tink::core::insecure_secret_key_access
+    tink::core::key
     tink::core::keyset_handle
+    tink::core::parameters
+    tink::core::partial_key_access
+    tink::core::primitive_set
     tink::core::registry
+    tink::core::restricted_data
+    tink::config::global_registry
+    tink::internal::ec_util
     tink::internal::fips_utils
+    tink::internal::mutable_serialization_registry
+    tink::internal::proto_key_serialization
+    tink::internal::proto_parameters_serialization
+    tink::internal::serialization
+    tink::subtle::random
     tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
+    tink::proto::aes_gcm_cc_proto
+    tink::proto::common_cc_proto
+    tink::proto::ecies_aead_hkdf_cc_proto
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_test(
@@ -429,6 +633,7 @@ tink_cc_test(
     tink::core::partial_key_access
     tink::core::registry
     tink::core::restricted_data
+    tink::config::global_registry
     tink::config::tink_fips
     tink::hybrid::internal::hpke_private_key_manager
     tink::hybrid::internal::hpke_public_key_manager
@@ -454,14 +659,18 @@ tink_cc_test(
     tink::hybrid::failing_hybrid
     tink::hybrid::hybrid_decrypt_wrapper
     gmock
+    absl::flat_hash_map
+    absl::memory
+    absl::status
     absl::strings
     tink::core::hybrid_decrypt
-    tink::core::hybrid_encrypt
     tink::core::primitive_set
+    tink::core::registry
     tink::internal::registry_impl
     tink::monitoring::monitoring
     tink::monitoring::monitoring_client_mocks
     tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::tink_cc_proto
@@ -475,13 +684,18 @@ tink_cc_test(
     tink::hybrid::failing_hybrid
     tink::hybrid::hybrid_encrypt_wrapper
     gmock
+    absl::flat_hash_map
+    absl::memory
     absl::status
+    absl::string_view
     tink::core::hybrid_encrypt
     tink::core::primitive_set
+    tink::core::registry
     tink::internal::registry_impl
     tink::monitoring::monitoring
     tink::monitoring::monitoring_client_mocks
     tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::tink_cc_proto
@@ -555,11 +769,17 @@ tink_cc_test(
     tink::hybrid::ecies_aead_hkdf_dem_helper
     gmock
     absl::status
+    absl::string_view
     tink::aead::aes_gcm_key_manager
     tink::daead::aes_siv_key_manager
+    tink::daead::subtle::aead_or_daead
     tink::util::secret_data
+    tink::util::status
     tink::util::test_matchers
     tink::util::test_util
+    tink::proto::aes_gcm_cc_proto
+    tink::proto::aes_siv_cc_proto
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_test(
@@ -571,7 +791,11 @@ tink_cc_test(
     tink::hybrid::ecies_aead_hkdf_hybrid_encrypt
     gmock
     absl::memory
+    absl::status
+    absl::string_view
     tink::core::hybrid_decrypt
+    tink::core::hybrid_encrypt
+    tink::core::registry
     tink::aead::aes_ctr_hmac_aead_key_manager
     tink::aead::aes_gcm_key_manager
     tink::aead::xchacha20_poly1305_key_manager
@@ -596,6 +820,7 @@ tink_cc_test(
     tink::hybrid::ecies_aead_hkdf_hybrid_encrypt
     gmock
     absl::memory
+    absl::status
     tink::core::hybrid_encrypt
     tink::aead::aes_gcm_key_manager
     tink::internal::ec_util
@@ -611,10 +836,12 @@ tink_cc_test(
   SRCS
     ecies_aead_hkdf_private_key_manager_test.cc
   DEPS
+    tink::hybrid::ecies_aead_hkdf_hybrid_encrypt
     tink::hybrid::ecies_aead_hkdf_private_key_manager
     tink::hybrid::ecies_aead_hkdf_public_key_manager
     tink::hybrid::hybrid_key_templates
     gmock
+    absl::memory
     absl::status
     tink::core::hybrid_decrypt
     tink::core::registry
@@ -663,6 +890,8 @@ tink_cc_test(
     tink::hybrid::failing_hybrid
     gmock
     absl::status
+    tink::core::hybrid_decrypt
+    tink::core::hybrid_encrypt
     tink::util::test_matchers
 )
 
@@ -757,4 +986,160 @@ tink_cc_test(
     tink::util::test_matchers
     tink::proto::hpke_cc_proto
     tink::proto::tink_cc_proto
+)
+
+tink_cc_test(
+  NAME config_v0_test
+  SRCS
+    config_v0_test.cc
+  DEPS
+    tink::hybrid::config_v0
+    tink::hybrid::hybrid_key_templates
+    tink::hybrid::key_gen_config_v0
+    gmock
+    tink::core::hybrid_decrypt
+    tink::core::hybrid_encrypt
+    tink::core::keyset_handle
+    tink::util::statusor
+    tink::util::test_matchers
+    tink::proto::tink_cc_proto
+  TAGS
+    exclude_if_openssl
+)
+
+tink_cc_test(
+  NAME config_v0_openssl_test
+  SRCS
+    config_v0_test.cc
+  DEPS
+    tink::hybrid::config_v0_openssl
+    tink::hybrid::hybrid_key_templates
+    tink::hybrid::key_gen_config_v0_openssl
+    gmock
+    tink::core::hybrid_decrypt
+    tink::core::hybrid_encrypt
+    tink::core::keyset_handle
+    tink::util::statusor
+    tink::util::test_matchers
+    tink::proto::tink_cc_proto
+  TAGS
+    exclude_if_boringssl
+)
+
+tink_cc_test(
+  NAME ecies_parameters_test
+  SRCS
+    ecies_parameters_test.cc
+  DEPS
+    tink::hybrid::ecies_parameters
+    gmock
+    absl::status
+    absl::strings
+    absl::string_view
+    absl::optional
+    tink::core::parameters
+    tink::aead::aes_ctr_hmac_aead_parameters
+    tink::aead::aes_gcm_parameters
+    tink::aead::xchacha20_poly1305_parameters
+    tink::daead::aes_siv_parameters
+    tink::util::statusor
+    tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME ecies_public_key_test
+  SRCS
+    ecies_public_key_test.cc
+  DEPS
+    tink::hybrid::ecies_parameters
+    tink::hybrid::ecies_public_key
+    gmock
+    absl::memory
+    absl::status
+    absl::strings
+    absl::optional
+    crypto
+    tink::core::big_integer
+    tink::core::ec_point
+    tink::core::parameters
+    tink::core::partial_key_access
+    tink::daead::aes_siv_parameters
+    tink::internal::ec_util
+    tink::internal::ssl_unique_ptr
+    tink::subtle::common_enums
+    tink::subtle::random
+    tink::util::statusor
+    tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME ecies_private_key_test
+  SRCS
+    ecies_private_key_test.cc
+  DEPS
+    tink::hybrid::ecies_parameters
+    tink::hybrid::ecies_private_key
+    tink::hybrid::ecies_public_key
+    gmock
+    absl::status
+    absl::strings
+    absl::string_view
+    absl::optional
+    crypto
+    tink::core::big_integer
+    tink::core::ec_point
+    tink::core::insecure_secret_key_access
+    tink::core::partial_key_access
+    tink::core::restricted_big_integer
+    tink::core::restricted_data
+    tink::internal::ec_util
+    tink::subtle::common_enums
+    tink::subtle::random
+    tink::util::secret_data
+    tink::util::statusor
+    tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME ecies_proto_serialization_test
+  SRCS
+    ecies_proto_serialization_test.cc
+  DEPS
+    tink::hybrid::ecies_parameters
+    tink::hybrid::ecies_private_key
+    tink::hybrid::ecies_proto_serialization
+    tink::hybrid::ecies_public_key
+    gmock
+    absl::status
+    absl::strings
+    absl::string_view
+    absl::optional
+    crypto
+    tink::core::big_integer
+    tink::core::ec_point
+    tink::core::insecure_secret_key_access
+    tink::core::key
+    tink::core::parameters
+    tink::core::partial_key_access
+    tink::core::restricted_big_integer
+    tink::core::restricted_data
+    tink::internal::ec_util
+    tink::internal::mutable_serialization_registry
+    tink::internal::proto_key_serialization
+    tink::internal::proto_parameters_serialization
+    tink::internal::serialization
+    tink::subtle::common_enums
+    tink::util::enums
+    tink::util::secret_data
+    tink::util::statusor
+    tink::util::test_matchers
+    tink::proto::aes_ctr_cc_proto
+    tink::proto::aes_ctr_hmac_aead_cc_proto
+    tink::proto::aes_gcm_cc_proto
+    tink::proto::aes_siv_cc_proto
+    tink::proto::common_cc_proto
+    tink::proto::ecies_aead_hkdf_cc_proto
+    tink::proto::hmac_cc_proto
+    tink::proto::tink_cc_proto
+    tink::proto::xchacha20_poly1305_cc_proto
 )

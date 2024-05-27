@@ -20,7 +20,9 @@
 #include "absl/status/status.h"
 #include "tink/aead/aead_wrapper.h"
 #include "tink/aead/aes_ctr_hmac_aead_key_manager.h"
+#include "tink/aead/aes_ctr_hmac_aead_proto_serialization.h"
 #include "tink/aead/aes_eax_key_manager.h"
+#include "tink/aead/aes_eax_proto_serialization.h"
 #include "tink/aead/aes_gcm_key_manager.h"
 #include "tink/aead/aes_gcm_proto_serialization.h"
 #include "tink/aead/aes_gcm_siv_key_manager.h"
@@ -28,6 +30,7 @@
 #include "tink/aead/kms_aead_key_manager.h"
 #include "tink/aead/kms_envelope_aead_key_manager.h"
 #include "tink/aead/xchacha20_poly1305_key_manager.h"
+#include "tink/aead/xchacha20_poly1305_proto_serialization.h"
 #include "tink/config/tink_fips.h"
 #include "tink/mac/mac_config.h"
 #include "tink/registry.h"
@@ -59,6 +62,11 @@ util::Status AeadConfig::Register() {
 
   status = Registry::RegisterKeyTypeManager(
       absl::make_unique<AesGcmKeyManager>(), true);
+  if (!status.ok()) {
+    return status;
+  }
+
+  status = RegisterAesCtrHmacAeadProtoSerialization();
   if (!status.ok()) {
     return status;
   }
@@ -104,6 +112,16 @@ util::Status AeadConfig::Register() {
   }
 
   status = RegisterAesGcmSivProtoSerialization();
+  if (!status.ok()) {
+    return status;
+  }
+
+  status = RegisterAesEaxProtoSerialization();
+  if (!status.ok()) {
+    return status;
+  }
+
+  status = RegisterXChaCha20Poly1305ProtoSerialization();
   if (!status.ok()) {
     return status;
   }

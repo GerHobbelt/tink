@@ -18,209 +18,156 @@ package com.google.crypto.tink.signature;
 
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
+import com.google.crypto.tink.AccessesPartialKey;
+import com.google.crypto.tink.InsecureSecretKeyAccess;
+import com.google.crypto.tink.KeyManager;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Parameters;
+import com.google.crypto.tink.PrivateKeyManager;
 import com.google.crypto.tink.PublicKeySign;
-import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.PublicKeyVerify;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
-import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.KeyManagerRegistry;
+import com.google.crypto.tink.internal.LegacyKeyManagerImpl;
+import com.google.crypto.tink.internal.MutableKeyCreationRegistry;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
-import com.google.crypto.tink.internal.PrimitiveFactory;
-import com.google.crypto.tink.internal.PrivateKeyTypeManager;
-import com.google.crypto.tink.proto.EcdsaKeyFormat;
-import com.google.crypto.tink.proto.EcdsaParams;
-import com.google.crypto.tink.proto.EcdsaPrivateKey;
-import com.google.crypto.tink.proto.EcdsaPublicKey;
+import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
-import com.google.crypto.tink.signature.internal.SigUtil;
+import com.google.crypto.tink.signature.internal.EcdsaProtoSerialization;
 import com.google.crypto.tink.subtle.EcdsaSignJce;
+import com.google.crypto.tink.subtle.EcdsaVerifyJce;
 import com.google.crypto.tink.subtle.EllipticCurves;
-import com.google.crypto.tink.subtle.SelfKeyTestValidators;
-import com.google.crypto.tink.subtle.Validators;
-import com.google.protobuf.ByteString;
-import com.google.protobuf.ExtensionRegistryLite;
-import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.crypto.tink.util.SecretBigInteger;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
-import java.security.spec.ECPoint;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /**
  * This key manager generates new {@code EcdsaPrivateKey} keys and produces new instances of {@code
  * EcdsaSignJce}.
  */
-public final class EcdsaSignKeyManager
-    extends PrivateKeyTypeManager<EcdsaPrivateKey, EcdsaPublicKey> {
-  EcdsaSignKeyManager() {
-    super(
-        EcdsaPrivateKey.class,
-        EcdsaPublicKey.class,
-        new PrimitiveFactory<PublicKeySign, EcdsaPrivateKey>(PublicKeySign.class) {
-          @Override
-          public PublicKeySign getPrimitive(EcdsaPrivateKey key) throws GeneralSecurityException {
-            ECPrivateKey privateKey =
-                EllipticCurves.getEcPrivateKey(
-                    SigUtil.toCurveType(key.getPublicKey().getParams().getCurve()),
-                    key.getKeyValue().toByteArray());
+public final class EcdsaSignKeyManager {
+  private static final PrimitiveConstructor<EcdsaPrivateKey, PublicKeySign>
+      PUBLIC_KEY_SIGN_PRIMITIVE_CONSTRUCTOR =
+          PrimitiveConstructor.create(
+              EcdsaSignJce::create, EcdsaPrivateKey.class, PublicKeySign.class);
 
-            ECPublicKey publicKey =
-                EllipticCurves.getEcPublicKey(
-                    SigUtil.toCurveType(key.getPublicKey().getParams().getCurve()),
-                    key.getPublicKey().getX().toByteArray(),
-                    key.getPublicKey().getY().toByteArray());
+  private static final PrimitiveConstructor<EcdsaPublicKey, PublicKeyVerify>
+      PUBLIC_KEY_VERIFY_PRIMITIVE_CONSTRUCTOR =
+          PrimitiveConstructor.create(
+              EcdsaVerifyJce::create, EcdsaPublicKey.class, PublicKeyVerify.class);
 
-            SelfKeyTestValidators.validateEcdsa(
-                privateKey,
-                publicKey,
-                SigUtil.toHashType(key.getPublicKey().getParams().getHashType()),
-                SigUtil.toEcdsaEncoding(key.getPublicKey().getParams().getEncoding()));
+  private static final PrivateKeyManager<PublicKeySign> legacyPrivateKeyManager =
+      LegacyKeyManagerImpl.createPrivateKeyManager(
+          getKeyType(), PublicKeySign.class, com.google.crypto.tink.proto.EcdsaPrivateKey.parser());
 
-            return new EcdsaSignJce(
-                privateKey,
-                SigUtil.toHashType(key.getPublicKey().getParams().getHashType()),
-                SigUtil.toEcdsaEncoding(key.getPublicKey().getParams().getEncoding()));
-          }
-        });
-  }
+  private static final KeyManager<PublicKeyVerify> legacyPublicKeyManager =
+      LegacyKeyManagerImpl.create(
+          EcdsaVerifyKeyManager.getKeyType(),
+          PublicKeyVerify.class,
+          KeyMaterialType.ASYMMETRIC_PUBLIC,
+          com.google.crypto.tink.proto.EcdsaPublicKey.parser());
 
-  @Override
-  public String getKeyType() {
+  static String getKeyType() {
     return "type.googleapis.com/google.crypto.tink.EcdsaPrivateKey";
   }
 
-  @Override
-  public int getVersion() {
-    return 0;
-  }
+  @AccessesPartialKey
+  private static EcdsaPrivateKey createKey(
+      EcdsaParameters parameters, @Nullable Integer idRequirement) throws GeneralSecurityException {
+    KeyPair keyPair = EllipticCurves.generateKeyPair(parameters.getCurveType().toParameterSpec());
+    ECPublicKey pubKey = (ECPublicKey) keyPair.getPublic();
+    ECPrivateKey privKey = (ECPrivateKey) keyPair.getPrivate();
 
-  @Override
-  public EcdsaPublicKey getPublicKey(EcdsaPrivateKey key) throws GeneralSecurityException {
-    return key.getPublicKey();
-  }
-
-  @Override
-  public KeyMaterialType keyMaterialType() {
-    return KeyMaterialType.ASYMMETRIC_PRIVATE;
-  }
-
-  @Override
-  public EcdsaPrivateKey parseKey(ByteString byteString) throws InvalidProtocolBufferException {
-    return EcdsaPrivateKey.parseFrom(byteString, ExtensionRegistryLite.getEmptyRegistry());
-  }
-
-  @Override
-  public void validateKey(EcdsaPrivateKey privKey) throws GeneralSecurityException {
-    Validators.validateVersion(privKey.getVersion(), getVersion());
-    SigUtil.validateEcdsaParams(privKey.getPublicKey().getParams());
-  }
-
-  @Override
-  public KeyTypeManager.KeyFactory<EcdsaKeyFormat, EcdsaPrivateKey> keyFactory() {
-    return new KeyTypeManager.KeyFactory<EcdsaKeyFormat, EcdsaPrivateKey>(EcdsaKeyFormat.class) {
-      @Override
-      public void validateKeyFormat(EcdsaKeyFormat format) throws GeneralSecurityException {
-        SigUtil.validateEcdsaParams(format.getParams());
-      }
-
-      @Override
-      public EcdsaKeyFormat parseKeyFormat(ByteString byteString)
-          throws InvalidProtocolBufferException {
-        return EcdsaKeyFormat.parseFrom(byteString, ExtensionRegistryLite.getEmptyRegistry());
-      }
-
-      @Override
-      public EcdsaPrivateKey createKey(EcdsaKeyFormat format) throws GeneralSecurityException {
-        EcdsaParams ecdsaParams = format.getParams();
-        KeyPair keyPair =
-            EllipticCurves.generateKeyPair(SigUtil.toCurveType(ecdsaParams.getCurve()));
-        ECPublicKey pubKey = (ECPublicKey) keyPair.getPublic();
-        ECPrivateKey privKey = (ECPrivateKey) keyPair.getPrivate();
-        ECPoint w = pubKey.getW();
-
-        // Creates EcdsaPublicKey.
-        EcdsaPublicKey ecdsaPubKey =
-            EcdsaPublicKey.newBuilder()
-                .setVersion(getVersion())
-                .setParams(ecdsaParams)
-                .setX(ByteString.copyFrom(w.getAffineX().toByteArray()))
-                .setY(ByteString.copyFrom(w.getAffineY().toByteArray()))
-                .build();
-
-        // Creates EcdsaPrivateKey.
-        return EcdsaPrivateKey.newBuilder()
-            .setVersion(getVersion())
-            .setPublicKey(ecdsaPubKey)
-            .setKeyValue(ByteString.copyFrom(privKey.getS().toByteArray()))
+    EcdsaPublicKey publicKey =
+        EcdsaPublicKey.builder()
+            .setParameters(parameters)
+            .setIdRequirement(idRequirement)
+            .setPublicPoint(pubKey.getW())
             .build();
-      }
-    };
+
+    return EcdsaPrivateKey.builder()
+        .setPublicKey(publicKey)
+        .setPrivateValue(
+            SecretBigInteger.fromBigInteger(privKey.getS(), InsecureSecretKeyAccess.get()))
+        .build();
   }
+
+  @SuppressWarnings("InlineLambdaConstant") // We need a correct Object#equals in registration.
+  private static final MutableKeyCreationRegistry.KeyCreator<EcdsaParameters> KEY_CREATOR =
+      EcdsaSignKeyManager::createKey;
 
   private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put("ECDSA_P256", PredefinedSignatureParameters.ECDSA_P256);
-        // This key template does not make sense because IEEE P1363 mandates a raw signature.
-        // It is needed to maintain backward compatibility with SignatureKeyTemplates.
-        // TODO(b/185475349): remove this in 2.0.0.
-        result.put("ECDSA_P256_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P256_IEEE_P1363);
-        result.put(
-            "ECDSA_P256_RAW",
-            EcdsaParameters.builder()
-                .setHashType(EcdsaParameters.HashType.SHA256)
-                .setCurveType(EcdsaParameters.CurveType.NIST_P256)
-                .setSignatureEncoding(EcdsaParameters.SignatureEncoding.IEEE_P1363)
-                .setVariant(EcdsaParameters.Variant.NO_PREFIX)
-                .build());
-        // This key template is identical to ECDSA_P256_RAW.
-        // It is needed to maintain backward compatibility with SignatureKeyTemplates.
-        // TODO(b/185475349): remove this in 2.0.0.
-        result.put(
-            "ECDSA_P256_IEEE_P1363_WITHOUT_PREFIX",
-            PredefinedSignatureParameters.ECDSA_P256_IEEE_P1363_WITHOUT_PREFIX);
-        // TODO(b/140101381): This template is confusing and will be removed.
-        result.put("ECDSA_P384", PredefinedSignatureParameters.ECDSA_P384);
-        // TODO(b/185475349): remove this in 2.0.0.
-        result.put("ECDSA_P384_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P384_IEEE_P1363);
-        result.put(
-            "ECDSA_P384_SHA512",
-            EcdsaParameters.builder()
-                .setHashType(EcdsaParameters.HashType.SHA512)
-                .setCurveType(EcdsaParameters.CurveType.NIST_P384)
-                .setSignatureEncoding(EcdsaParameters.SignatureEncoding.DER)
-                .setVariant(EcdsaParameters.Variant.TINK)
-                .build());
-        result.put(
-            "ECDSA_P384_SHA384",
-            EcdsaParameters.builder()
-                .setHashType(EcdsaParameters.HashType.SHA384)
-                .setCurveType(EcdsaParameters.CurveType.NIST_P384)
-                .setSignatureEncoding(EcdsaParameters.SignatureEncoding.DER)
-                .setVariant(EcdsaParameters.Variant.TINK)
-                .build());
-        result.put("ECDSA_P521", PredefinedSignatureParameters.ECDSA_P521);
-        // TODO(b/185475349): remove this in 2.0.0.
-        result.put("ECDSA_P521_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P521_IEEE_P1363);
+    // This key template does not make sense because IEEE P1363 mandates a raw signature.
+    // It is needed to maintain backward compatibility with SignatureKeyTemplates.
+    result.put("ECDSA_P256_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P256_IEEE_P1363);
+    result.put(
+        "ECDSA_P256_RAW",
+        EcdsaParameters.builder()
+            .setHashType(EcdsaParameters.HashType.SHA256)
+            .setCurveType(EcdsaParameters.CurveType.NIST_P256)
+            .setSignatureEncoding(EcdsaParameters.SignatureEncoding.IEEE_P1363)
+            .setVariant(EcdsaParameters.Variant.NO_PREFIX)
+            .build());
+    // This key template is identical to ECDSA_P256_RAW.
+    // It is needed to maintain backward compatibility with SignatureKeyTemplates.
+    result.put(
+        "ECDSA_P256_IEEE_P1363_WITHOUT_PREFIX",
+        PredefinedSignatureParameters.ECDSA_P256_IEEE_P1363_WITHOUT_PREFIX);
+    result.put("ECDSA_P384", PredefinedSignatureParameters.ECDSA_P384);
+    result.put("ECDSA_P384_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P384_IEEE_P1363);
+    result.put(
+        "ECDSA_P384_SHA512",
+        EcdsaParameters.builder()
+            .setHashType(EcdsaParameters.HashType.SHA512)
+            .setCurveType(EcdsaParameters.CurveType.NIST_P384)
+            .setSignatureEncoding(EcdsaParameters.SignatureEncoding.DER)
+            .setVariant(EcdsaParameters.Variant.TINK)
+            .build());
+    result.put(
+        "ECDSA_P384_SHA384",
+        EcdsaParameters.builder()
+            .setHashType(EcdsaParameters.HashType.SHA384)
+            .setCurveType(EcdsaParameters.CurveType.NIST_P384)
+            .setSignatureEncoding(EcdsaParameters.SignatureEncoding.DER)
+            .setVariant(EcdsaParameters.Variant.TINK)
+            .build());
+    result.put("ECDSA_P521", PredefinedSignatureParameters.ECDSA_P521);
+    result.put("ECDSA_P521_IEEE_P1363", PredefinedSignatureParameters.ECDSA_P521_IEEE_P1363);
         return Collections.unmodifiableMap(result);
   }
 
-  @Override
-  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
-    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_REQUIRES_BORINGCRYPTO;
-  };
+  private static final TinkFipsUtil.AlgorithmFipsCompatibility FIPS =
+      TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_REQUIRES_BORINGCRYPTO;
 
   /**
    * Registers the {@link EcdsaSignKeyManager} and the {@link EcdsaVerifyKeyManager} with the
    * registry, so that the the Ecdsa-Keys can be used with Tink.
    */
   public static void registerPair(boolean newKeyAllowed) throws GeneralSecurityException {
-    Registry.registerAsymmetricKeyManagers(
-        new EcdsaSignKeyManager(), new EcdsaVerifyKeyManager(), newKeyAllowed);
+    if (!FIPS.isCompatible()) {
+      throw new GeneralSecurityException(
+          "Can not use ECDSA in FIPS-mode, as BoringCrypto module is not available.");
+    }
     EcdsaProtoSerialization.register();
     MutableParametersRegistry.globalInstance().putAll(namedParameters());
+    MutablePrimitiveRegistry.globalInstance()
+        .registerPrimitiveConstructor(PUBLIC_KEY_SIGN_PRIMITIVE_CONSTRUCTOR);
+    MutablePrimitiveRegistry.globalInstance()
+        .registerPrimitiveConstructor(PUBLIC_KEY_VERIFY_PRIMITIVE_CONSTRUCTOR);
+    MutableKeyCreationRegistry.globalInstance().add(KEY_CREATOR, EcdsaParameters.class);
+    KeyManagerRegistry.globalInstance()
+        .registerKeyManagerWithFipsCompatibility(legacyPrivateKeyManager, FIPS, newKeyAllowed);
+    KeyManagerRegistry.globalInstance()
+        .registerKeyManagerWithFipsCompatibility(legacyPublicKeyManager, FIPS, false);
   }
 
   /**
@@ -269,4 +216,5 @@ public final class EcdsaSignKeyManager
                     .build()));
   }
 
+  private EcdsaSignKeyManager() {}
 }

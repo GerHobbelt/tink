@@ -21,9 +21,15 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
 
 import com.google.crypto.tink.aead.AeadConfig;
+import com.google.crypto.tink.aead.AesGcmParameters;
 import com.google.crypto.tink.mac.MacConfig;
+import com.google.crypto.tink.proto.KeyData;
+import com.google.crypto.tink.proto.KeyStatusType;
+import com.google.crypto.tink.proto.Keyset;
+import com.google.crypto.tink.proto.OutputPrefixType;
 import com.google.crypto.tink.signature.SignatureConfig;
 import com.google.crypto.tink.subtle.Hex;
+import com.google.protobuf.ByteString;
 import java.io.ByteArrayOutputStream;
 import java.security.GeneralSecurityException;
 import org.junit.BeforeClass;
@@ -43,10 +49,7 @@ public final class TinkProtoKeysetFormatTest {
 
   private void assertKeysetHandleAreEqual(KeysetHandle keysetHandle1, KeysetHandle keysetHandle2)
       throws Exception {
-    // This assertion is too strong, but it works here because we don't parse or serialize
-    // keydata.value fields.
-    assertThat(CleartextKeysetHandle.getKeyset(keysetHandle2))
-        .isEqualTo(CleartextKeysetHandle.getKeyset(keysetHandle1));
+    assertThat(keysetHandle2.equalsKeyset(keysetHandle1)).isTrue();
   }
 
   private KeysetHandle generateKeyset() throws GeneralSecurityException {
@@ -136,6 +139,58 @@ public final class TinkProtoKeysetFormatTest {
         () ->
             TinkProtoKeysetFormat.parseKeyset(
                 invalidSerializedKeyset, InsecureSecretKeyAccess.get()));
+  }
+
+  @Test
+  public void parsingKeysetWithUnknownStatus_doesNotThrowButGetAtThrows() throws Exception {
+    Keyset keyset =
+        Keyset.newBuilder()
+            .addKey(
+                Keyset.Key.newBuilder()
+                    .setKeyData(
+                        KeyData.newBuilder()
+                            .setValue(ByteString.copyFromUtf8("value"))
+                            .setTypeUrl("unknown")
+                            .setKeyMaterialType(KeyData.KeyMaterialType.SYMMETRIC)
+                            .build())
+                    .setStatus(KeyStatusType.UNKNOWN_STATUS)
+                    .setKeyId(123)
+                    .setOutputPrefixType(OutputPrefixType.TINK)
+                    .build())
+            .setPrimaryKeyId(123)
+            .build();
+    KeysetHandle handle =
+        TinkProtoKeysetFormat.parseKeyset(keyset.toByteArray(), InsecureSecretKeyAccess.get());
+    assertThrows(IllegalStateException.class, () -> handle.getAt(0));
+
+    // re-parse the KeysetHandle, as suggested in documentation of getAt.
+    assertThrows(GeneralSecurityException.class, () -> KeysetHandle.newBuilder(handle).build());
+  }
+
+  @Test
+  public void parsingKeysetWithNonAsciiTypeUrl_doesNotThrowButGetAtThrows() throws Exception {
+    Keyset keyset =
+        Keyset.newBuilder()
+            .addKey(
+                Keyset.Key.newBuilder()
+                    .setKeyData(
+                        KeyData.newBuilder()
+                            .setValue(ByteString.copyFromUtf8("value"))
+                            .setTypeUrl("\t")
+                            .setKeyMaterialType(KeyData.KeyMaterialType.SYMMETRIC)
+                            .build())
+                    .setStatus(KeyStatusType.ENABLED)
+                    .setKeyId(123)
+                    .setOutputPrefixType(OutputPrefixType.TINK)
+                    .build())
+            .setPrimaryKeyId(123)
+            .build();
+    KeysetHandle handle =
+        TinkProtoKeysetFormat.parseKeyset(keyset.toByteArray(), InsecureSecretKeyAccess.get());
+    assertThrows(IllegalStateException.class, () -> handle.getAt(0));
+
+    // re-parse the KeysetHandle, as suggested in documentation of getAt.
+    assertThrows(GeneralSecurityException.class, () -> KeysetHandle.newBuilder(handle).build());
   }
 
   @Test
@@ -372,5 +427,32 @@ public final class TinkProtoKeysetFormatTest {
     final byte[] message = Hex.decode("");
     final byte[] tag = Hex.decode("011d270875989dd6fbd5f54dbc9520bb41efd058d5");
     mac.verifyMac(tag, message);
+  }
+
+  @Test
+  public void serializationOverhead() throws Exception {
+    int ivSize = 12;
+    int keySize = 16;
+    int tagSize = 16;
+    AesGcmParameters aesGcm128Parameters =
+        AesGcmParameters.builder()
+            .setIvSizeBytes(ivSize)
+            .setKeySizeBytes(keySize)
+            .setTagSizeBytes(tagSize)
+            .setVariant(AesGcmParameters.Variant.NO_PREFIX)
+            .build();
+    KeysetHandle keysetHandle = KeysetHandle.generateNew(aesGcm128Parameters);
+    Aead keyEncryptionAead = KeysetHandle.generateNew(aesGcm128Parameters).getPrimitive(Aead.class);
+    byte[] serializedKeyset =
+        TinkProtoKeysetFormat.serializeKeyset(keysetHandle, InsecureSecretKeyAccess.get());
+
+    byte[] rawEncryptedKeyset = keyEncryptionAead.encrypt(serializedKeyset, null);
+
+    byte[] encryptedKeyset =
+        TinkProtoKeysetFormat.serializeEncryptedKeyset(keysetHandle, keyEncryptionAead, null);
+    // {@code encryptedKeyset} is a serialized protocol buffer that wraps the encrypted keyset bytes
+    // as a protobuf bytes field. So, it should only be slightly larger than {@code
+    // rawEncryptedKeyset}.
+    assertThat(encryptedKeyset.length).isLessThan(rawEncryptedKeyset.length + 6);
   }
 }

@@ -21,14 +21,19 @@
 #include <string>
 #include <utility>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "tink/chunked_mac.h"
+#include "tink/config/global_registry.h"
 #include "tink/insecure_secret_key_access.h"
 #include "tink/internal/fips_utils.h"
 #include "tink/internal/mutable_serialization_registry.h"
 #include "tink/internal/proto_key_serialization.h"
 #include "tink/internal/proto_parameters_serialization.h"
+#include "tink/internal/serialization.h"
+#include "tink/key.h"
 #include "tink/keyset_handle.h"
 #include "tink/mac.h"
 #include "tink/mac/aes_cmac_key.h"
@@ -38,12 +43,19 @@
 #include "tink/mac/hmac_key_manager.h"
 #include "tink/mac/hmac_parameters.h"
 #include "tink/mac/mac_key_templates.h"
+#include "tink/parameters.h"
 #include "tink/partial_key_access.h"
+#include "tink/primitive_set.h"
 #include "tink/registry.h"
+#include "tink/restricted_data.h"
+#include "tink/subtle/random.h"
 #include "tink/util/status.h"
+#include "tink/util/statusor.h"
 #include "tink/util/test_matchers.h"
 #include "tink/util/test_util.h"
+#include "proto/aes_cmac.pb.h"
 #include "proto/common.pb.h"
+#include "proto/hmac.pb.h"
 #include "proto/tink.pb.h"
 
 namespace crypto {
@@ -356,7 +368,7 @@ TEST_P(ChunkedMacConfigTest, ChunkedMacWrappersRegistered) {
 
   KeyTemplate key_template = GetParam();
   util::StatusOr<std::unique_ptr<KeysetHandle>> key =
-      KeysetHandle::GenerateNew(key_template);
+      KeysetHandle::GenerateNew(key_template, KeyGenConfigGlobalRegistry());
   ASSERT_THAT(key, IsOk());
 
   util::StatusOr<std::unique_ptr<ChunkedMac>> chunked_mac =
@@ -390,8 +402,10 @@ TEST_F(MacConfigTest, RegisterNonFipsTemplates) {
   non_fips_key_templates.push_back(MacKeyTemplates::AesCmac());
 
   for (auto key_template : non_fips_key_templates) {
-    EXPECT_THAT(KeysetHandle::GenerateNew(key_template).status(),
-                StatusIs(absl::StatusCode::kNotFound));
+    EXPECT_THAT(
+        KeysetHandle::GenerateNew(key_template, KeyGenConfigGlobalRegistry())
+            .status(),
+        StatusIs(absl::StatusCode::kNotFound));
   }
 }
 
@@ -409,7 +423,9 @@ TEST_F(MacConfigTest, RegisterFipsValidTemplates) {
   fips_key_templates.push_back(MacKeyTemplates::HmacSha512HalfSizeTag());
 
   for (auto key_template : fips_key_templates) {
-    EXPECT_THAT(KeysetHandle::GenerateNew(key_template), IsOk());
+    EXPECT_THAT(
+        KeysetHandle::GenerateNew(key_template, KeyGenConfigGlobalRegistry()),
+        IsOk());
   }
 }
 

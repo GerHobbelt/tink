@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc.
+// Copyright 2017 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,18 +18,17 @@ package com.google.crypto.tink.mac;
 
 import com.google.crypto.tink.CryptoFormat;
 import com.google.crypto.tink.Mac;
-import com.google.crypto.tink.PrimitiveSet;
 import com.google.crypto.tink.PrimitiveWrapper;
-import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.internal.LegacyProtoKey;
 import com.google.crypto.tink.internal.MonitoringUtil;
 import com.google.crypto.tink.internal.MutableMonitoringRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.internal.PrimitiveConstructor;
+import com.google.crypto.tink.internal.PrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveSet;
 import com.google.crypto.tink.mac.internal.LegacyFullMac;
 import com.google.crypto.tink.monitoring.MonitoringClient;
 import com.google.crypto.tink.monitoring.MonitoringKeysetInfo;
-import com.google.crypto.tink.util.Bytes;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.List;
@@ -43,7 +42,7 @@ import java.util.List;
  * the right key in the set. If the keys associated with the prefix do not validate the tag, the
  * primitive tries all keys with {@link com.google.crypto.tink.proto.OutputPrefixType#RAW}.
  */
-class MacWrapper implements PrimitiveWrapper<Mac, Mac> {
+public class MacWrapper implements PrimitiveWrapper<Mac, Mac> {
 
   private static final MacWrapper WRAPPER = new MacWrapper();
   private static final PrimitiveConstructor<LegacyProtoKey, Mac>
@@ -119,33 +118,10 @@ class MacWrapper implements PrimitiveWrapper<Mac, Mac> {
     }
   }
 
-  private void validateMacKeyPrefixes(PrimitiveSet<Mac> primitives)
-      throws GeneralSecurityException {
-    for (List<PrimitiveSet.Entry<Mac>> entryList : primitives.getAll()) {
-      for (PrimitiveSet.Entry<Mac> entry : entryList) {
-        if (entry.getKey() instanceof MacKey) {
-          MacKey macKey = (MacKey) entry.getKey();
-          Bytes expectedOutputPrefix = Bytes.copyFrom(entry.getIdentifier());
-          if (!expectedOutputPrefix.equals(macKey.getOutputPrefix())) {
-            throw new GeneralSecurityException(
-                "Mac Key with parameters "
-                    + macKey.getParameters()
-                    + " has wrong output prefix ("
-                    + macKey.getOutputPrefix()
-                    + ") instead of ("
-                    + expectedOutputPrefix
-                    + ")");
-          }
-        }
-      }
-    }
-  }
-
   MacWrapper() {}
 
   @Override
   public Mac wrap(final PrimitiveSet<Mac> primitives) throws GeneralSecurityException {
-    validateMacKeyPrefixes(primitives);
     return new WrappedMac(primitives);
   }
 
@@ -159,9 +135,19 @@ class MacWrapper implements PrimitiveWrapper<Mac, Mac> {
     return Mac.class;
   }
 
-  public static void register() throws GeneralSecurityException {
-    Registry.registerPrimitiveWrapper(WRAPPER);
+  static void register() throws GeneralSecurityException {
+    MutablePrimitiveRegistry.globalInstance().registerPrimitiveWrapper(WRAPPER);
     MutablePrimitiveRegistry.globalInstance()
         .registerPrimitiveConstructor(LEGACY_FULL_MAC_PRIMITIVE_CONSTRUCTOR);
+  }
+
+  /**
+   * registerToInternalPrimitiveRegistry is a non-public method (it takes an argument of an
+   * internal-only type) registering an instance of {@code MacWrapper} to the provided {@code
+   * PrimitiveRegistry.Builder}.
+   */
+  public static void registerToInternalPrimitiveRegistry(
+      PrimitiveRegistry.Builder primitiveRegistryBuilder) throws GeneralSecurityException {
+    primitiveRegistryBuilder.registerPrimitiveWrapper(WRAPPER);
   }
 }

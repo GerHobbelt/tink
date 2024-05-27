@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package signature_test
 
@@ -191,6 +189,24 @@ func TestRSASSAPKCS1SignerKeyManagerPrimitiveWithInvalidInputFails(t *testing.T)
 					Params: &rsassapkcs1pb.RsaSsaPkcs1Params{
 						HashType: cpb.HashType_SHA224,
 					},
+				},
+				D:   validPrivKey.GetD(),
+				P:   validPrivKey.GetP(),
+				Q:   validPrivKey.GetQ(),
+				Dp:  validPrivKey.GetDp(),
+				Dq:  validPrivKey.GetDq(),
+				Crt: validPrivKey.GetCrt(),
+			},
+		},
+		{
+			name: "public key params field unset",
+			key: &rsassapkcs1pb.RsaSsaPkcs1PrivateKey{
+				Version: validPrivKey.GetVersion(),
+				PublicKey: &rsassapkcs1pb.RsaSsaPkcs1PublicKey{
+					Version: validPrivKey.GetPublicKey().GetVersion(),
+					E:       validPrivKey.GetPublicKey().GetE(),
+					N:       validPrivKey.GetPublicKey().GetN(),
+					Params:  nil,
 				},
 				D:   validPrivKey.GetD(),
 				P:   validPrivKey.GetP(),

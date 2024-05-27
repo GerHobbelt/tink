@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 // Package gcpkms provides integration with the GCP Cloud KMS.
 // Tink APIs work with GCP and AWS KMS.
@@ -79,6 +77,6 @@ func (c *gcpClient) GetAEAD(keyURI string) (tink.AEAD, error) {
 		return nil, errors.New("unsupported keyURI")
 	}
 
-	uri := strings.TrimPrefix(keyURI, gcpPrefix)
-	return newGCPAEAD(uri, c.kms), nil
+	keyName := strings.TrimPrefix(keyURI, gcpPrefix)
+	return newGCPAEAD(keyName, c.kms), nil
 }

@@ -24,6 +24,10 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "tink/config/global_registry.h"
 #include "util/util.h"
 #include "tink/jwt/jwt_public_key_sign.h"
 #include "tink/jwt/jwt_signature_config.h"
@@ -101,7 +105,7 @@ int main(int argc, char** argv) {
   std::clog << "Using keyset in " << keyset_filename << " to ";
   std::clog << " generate and sign a token using audience '" << audience
             << "'; the resulting signature is written to " << token_filename
-            << std::endl;
+            << '\n';
 
   CHECK_OK(
       tink_cc_examples::JwtSign(keyset_filename, audience, token_filename));

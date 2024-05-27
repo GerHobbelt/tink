@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package subtle
 
@@ -49,7 +47,7 @@ const (
 // and are derived from the key derivation key, a randomly chosen salt of the
 // same size as the key and a nonce prefix.
 type AESGCMHKDF struct {
-	MainKey                      []byte
+	mainKey                      []byte
 	hkdfAlg                      string
 	keySizeInBytes               int
 	ciphertextSegmentSize        int
@@ -86,7 +84,7 @@ func NewAESGCMHKDF(mainKey []byte, hkdfAlg string, keySizeInBytes, ciphertextSeg
 	copy(keyClone, mainKey)
 
 	return &AESGCMHKDF{
-		MainKey:                      keyClone,
+		mainKey:                      keyClone,
 		hkdfAlg:                      hkdfAlg,
 		keySizeInBytes:               keySizeInBytes,
 		ciphertextSegmentSize:        ciphertextSegmentSize,
@@ -103,7 +101,7 @@ func (a *AESGCMHKDF) HeaderLength() int {
 // deriveKey returns a key derived from the given main key using salt and aad
 // parameters.
 func (a *AESGCMHKDF) deriveKey(salt, aad []byte) ([]byte, error) {
-	return subtle.ComputeHKDF(a.hkdfAlg, a.MainKey, salt, aad, uint32(a.keySizeInBytes))
+	return subtle.ComputeHKDF(a.hkdfAlg, a.mainKey, salt, aad, uint32(a.keySizeInBytes))
 }
 
 // newCipher creates a new AES-GCM cipher using the given key and the crypto library.

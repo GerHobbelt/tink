@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package hpke
 
@@ -364,7 +362,10 @@ func baseModeX25519HKDFSHA256Vectors(t *testing.T) map[hpkeID]vector {
 	testutil.SkipTestIfTestSrcDirIsNotSet(t)
 	t.Helper()
 
-	srcDir, _ := os.LookupEnv("TEST_SRCDIR")
+	srcDir, ok := os.LookupEnv("TEST_SRCDIR")
+	if !ok {
+		t.Fatal("TEST_SRCDIR not set")
+	}
 	path := filepath.Join(srcDir, os.Getenv("TEST_WORKSPACE"), "/testdata/testvectors/hpke_boringssl.json")
 	f, err := os.Open(path)
 	if err != nil {

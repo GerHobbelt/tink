@@ -23,13 +23,22 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tink/internal/keyset_handle_builder_entry.h"
+#include "tink/key.h"
 #include "tink/key_status.h"
 #include "tink/keyset_handle.h"
+#include "tink/parameters.h"
 #include "tink/subtle/random.h"
+#include "tink/util/secret_proto.h"
+#include "tink/util/status.h"
+#include "tink/util/statusor.h"
 #include "proto/tink.pb.h"
 
 namespace crypto {
@@ -143,6 +152,13 @@ util::Status KeysetHandleBuilder::CheckIdAssignments() {
   return util::OkStatus();
 }
 
+KeysetHandleBuilder& KeysetHandleBuilder::SetMonitoringAnnotations(
+    const absl::flat_hash_map<std::string, std::string>&
+        monitoring_annotations) {
+  monitoring_annotations_ = monitoring_annotations;
+  return *this;
+}
+
 util::StatusOr<KeysetHandle> KeysetHandleBuilder::Build() {
   if (build_called_) {
       return util::Status(
@@ -150,7 +166,7 @@ util::StatusOr<KeysetHandle> KeysetHandleBuilder::Build() {
           "KeysetHandleBuilder::Build may only be called once");
   }
   build_called_ = true;
-  Keyset keyset;
+  util::SecretProto<Keyset> keyset;
   absl::optional<int> primary_id = absl::nullopt;
 
   util::Status assigned_ids_status = CheckIdAssignments();
@@ -169,10 +185,11 @@ util::StatusOr<KeysetHandle> KeysetHandleBuilder::Build() {
     }
     ids_so_far.insert(*id);
 
-    util::StatusOr<Keyset::Key> key = entry.CreateKeysetKey(*id);
+    util::StatusOr<util::SecretProto<Keyset::Key>> key =
+        entry.CreateKeysetKey(*id);
     if (!key.ok()) return key.status();
 
-    *keyset.add_key() = *key;
+    *keyset->add_key() = **key;
     if (entry.IsPrimary()) {
       if (primary_id.has_value()) {
         return util::Status(
@@ -188,10 +205,11 @@ util::StatusOr<KeysetHandle> KeysetHandleBuilder::Build() {
     return util::Status(absl::StatusCode::kFailedPrecondition,
                         "No primary set in this keyset.");
   }
-  keyset.set_primary_key_id(*primary_id);
+  keyset->set_primary_key_id(*primary_id);
   util::StatusOr<std::vector<std::shared_ptr<const KeysetHandle::Entry>>>
-      entries = KeysetHandle::GetEntriesFromKeyset(keyset);
-  return KeysetHandle(keyset, *std::move(entries));
+      entries = KeysetHandle::GetEntriesFromKeyset(*keyset);
+  return KeysetHandle(std::move(keyset), *std::move(entries),
+                      monitoring_annotations_);
 }
 
 }  // namespace tink

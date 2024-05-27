@@ -17,10 +17,12 @@
 #include "tink/internal/mutable_serialization_registry.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
 #include "tink/insecure_secret_key_access.h"
 #include "tink/internal/key_parser.h"
 #include "tink/internal/key_serializer.h"
@@ -52,7 +54,7 @@ util::Status MutableSerializationRegistry::RegisterParametersParser(
   SerializationRegistry::Builder builder(registry_);
   util::Status status = builder.RegisterParametersParser(parser);
   if (!status.ok()) return status;
-  registry_ = builder.Build();
+  registry_ = std::move(builder).Build();
   return util::OkStatus();
 }
 
@@ -62,7 +64,7 @@ util::Status MutableSerializationRegistry::RegisterParametersSerializer(
   SerializationRegistry::Builder builder(registry_);
   util::Status status = builder.RegisterParametersSerializer(serializer);
   if (!status.ok()) return status;
-  registry_ = builder.Build();
+  registry_ = std::move(builder).Build();
   return util::OkStatus();
 }
 
@@ -72,7 +74,7 @@ util::Status MutableSerializationRegistry::RegisterKeyParser(
   SerializationRegistry::Builder builder(registry_);
   util::Status status = builder.RegisterKeyParser(parser);
   if (!status.ok()) return status;
-  registry_ = builder.Build();
+  registry_ = std::move(builder).Build();
   return util::OkStatus();
 }
 
@@ -82,7 +84,7 @@ util::Status MutableSerializationRegistry::RegisterKeySerializer(
   SerializationRegistry::Builder builder(registry_);
   util::Status status = builder.RegisterKeySerializer(serializer);
   if (!status.ok()) return status;
-  registry_ = builder.Build();
+  registry_ = std::move(builder).Build();
   return util::OkStatus();
 }
 

@@ -134,7 +134,7 @@ class TestKeyFactory : public KeyFactory {
       absl::string_view serialized_key_format) const override {
     auto key_data = absl::make_unique<KeyData>();
     key_data->set_type_url(key_type_);
-    key_data->set_value(std::string(serialized_key_format));
+    key_data->set_value(serialized_key_format);
     return std::move(key_data);
   }
 
@@ -2012,9 +2012,25 @@ TEST_F(RegistryImplTest, CanRegisterOnlyOneMonitoringFactory) {
                   std::move(monitoring_client_factory)),
               IsOk());
   ASSERT_THAT(registry_impl.GetMonitoringClientFactory(), Not(IsNull()));
+  auto another_monitoring_client_factory =
+      absl::make_unique<MockMonitoringClientFactory>();
+  EXPECT_THAT(registry_impl.RegisterMonitoringClientFactory(
+                  std::move(another_monitoring_client_factory)),
+              StatusIs(absl::StatusCode::kAlreadyExists));
+}
+
+TEST_F(RegistryImplTest, CannotRegisterNullFactory) {
+  RegistryImpl registry_impl;
+  EXPECT_THAT(registry_impl.RegisterMonitoringClientFactory(nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  auto monitoring_client_factory =
+      absl::make_unique<MockMonitoringClientFactory>();
   EXPECT_THAT(registry_impl.RegisterMonitoringClientFactory(
                   std::move(monitoring_client_factory)),
-              StatusIs(absl::StatusCode::kAlreadyExists));
+              IsOk());
+  ASSERT_THAT(registry_impl.GetMonitoringClientFactory(), Not(IsNull()));
+  EXPECT_THAT(registry_impl.RegisterMonitoringClientFactory(nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

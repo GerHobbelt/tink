@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package mac_test
 
@@ -93,7 +91,10 @@ func TestFactoryMultipleKeys(t *testing.T) {
 	// mac with a random key not in the keyset, verify with the keyset should fail
 	keyset2 = testutil.NewTestHMACKeyset(tagSize, tinkpb.OutputPrefixType_TINK)
 	primaryKey = keyset2.Key[0]
-	expectedPrefix, _ = cryptofmt.OutputPrefix(primaryKey)
+	expectedPrefix, err = cryptofmt.OutputPrefix(primaryKey)
+	if err != nil {
+		t.Errorf("cryptofmt.OutputPrefix() err = %q, want nil", err)
+	}
 	keysetHandle2, err = testkeyset.NewHandle(keyset2)
 	if err != nil {
 		t.Errorf("testkeyset.NewHandle failed: %s", err)

@@ -26,6 +26,7 @@
 #include "absl/strings/string_view.h"
 #include "tink/aead.h"
 #include "tink/aead/aead_config.h"
+#include "tink/config/global_registry.h"
 #include "util/util.h"
 #include "tink/keyset_handle.h"
 #include "tink/util/status.h"
@@ -123,9 +124,9 @@ int main(int argc, char** argv) {
 
   std::clog << "Using keyset from file " << keyset_filename << " to AEAD-"
             << mode << " file " << input_filename << " with associated data '"
-            << associated_data << "'." << std::endl;
+            << associated_data << "'." << '\n';
   std::clog << "The resulting output will be written to " << output_filename
-            << std::endl;
+            << '\n';
 
   CHECK_OK(tink_cc_examples::AeadCli(mode, keyset_filename, input_filename,
                                      output_filename, associated_data));

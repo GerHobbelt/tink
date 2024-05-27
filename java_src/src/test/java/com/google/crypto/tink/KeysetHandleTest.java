@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc.
+// Copyright 2017 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import static org.junit.Assume.assumeFalse;
 import com.google.common.truth.Expect;
 import com.google.crypto.tink.aead.AeadConfig;
 import com.google.crypto.tink.aead.AesEaxKeyManager;
+import com.google.crypto.tink.aead.PredefinedAeadParameters;
 import com.google.crypto.tink.aead.XChaCha20Poly1305Key;
 import com.google.crypto.tink.aead.XChaCha20Poly1305Parameters;
 import com.google.crypto.tink.internal.InternalConfiguration;
@@ -38,8 +39,10 @@ import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.internal.MutableSerializationRegistry;
 import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.internal.PrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveSet;
 import com.google.crypto.tink.internal.ProtoKeySerialization;
 import com.google.crypto.tink.internal.testing.FakeMonitoringClient;
+import com.google.crypto.tink.jwt.JwtSignatureConfig;
 import com.google.crypto.tink.mac.AesCmacKey;
 import com.google.crypto.tink.mac.AesCmacParameters;
 import com.google.crypto.tink.mac.AesCmacParameters.Variant;
@@ -53,6 +56,8 @@ import com.google.crypto.tink.monitoring.MonitoringClient;
 import com.google.crypto.tink.prf.PrfConfig;
 import com.google.crypto.tink.proto.AesEaxKey;
 import com.google.crypto.tink.proto.EcdsaPrivateKey;
+import com.google.crypto.tink.proto.EcdsaSignatureEncoding;
+import com.google.crypto.tink.proto.EllipticCurveType;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.HmacParams;
 import com.google.crypto.tink.proto.HmacPrfKey;
@@ -130,7 +135,7 @@ public class KeysetHandleTest {
       @Override
       public byte[] encrypt(final byte[] plaintext) throws GeneralSecurityException {
         logger.log(primitiveSet.getPrimary().getKeyId(), plaintext.length);
-        return primitiveSet.getPrimary().getPrimitive().encrypt(plaintext, new byte[0]);
+        return primitiveSet.getPrimary().getFullPrimitive().encrypt(plaintext, new byte[0]);
       }
     }
 
@@ -150,7 +155,7 @@ public class KeysetHandleTest {
     }
 
     static void register() throws GeneralSecurityException {
-      Registry.registerPrimitiveWrapper(WRAPPER);
+      MutablePrimitiveRegistry.globalInstance().registerPrimitiveWrapper(WRAPPER);
     }
   }
 
@@ -977,6 +982,34 @@ public class KeysetHandleTest {
     KeysetHandle handle = KeysetHandle.fromKeyset(TestUtil.createKeyset(key1));
 
     assertThrows(IllegalStateException.class, () -> handle.getAt(0));
+
+    // re-parse the KeysetHandle, as suggested in documentation of getAt.
+    assertThrows(GeneralSecurityException.class, () -> KeysetHandle.newBuilder(handle).build());
+  }
+
+  @Test
+  public void keysetWithNonAsciiTypeUrl_fromKeysetDoesNotThrowButGetAtThrows() throws Exception {
+    Keyset keyset =
+        Keyset.newBuilder()
+            .addKey(
+                Keyset.Key.newBuilder()
+                    .setKeyData(
+                        KeyData.newBuilder()
+                            .setValue(ByteString.copyFromUtf8("value"))
+                            .setTypeUrl("\t")
+                            .setKeyMaterialType(KeyData.KeyMaterialType.SYMMETRIC)
+                            .build())
+                    .setStatus(KeyStatusType.ENABLED)
+                    .setKeyId(123)
+                    .setOutputPrefixType(OutputPrefixType.TINK)
+                    .build())
+            .setPrimaryKeyId(123)
+            .build();
+    KeysetHandle handle = KeysetHandle.fromKeyset(keyset);
+    assertThrows(IllegalStateException.class, () -> handle.getAt(0));
+
+    // re-parse the KeysetHandle, as suggested in documentation of getAt.
+    assertThrows(GeneralSecurityException.class, () -> KeysetHandle.newBuilder(handle).build());
   }
 
   @Immutable
@@ -1966,5 +1999,131 @@ public class KeysetHandleTest {
             .build();
 
     assertTrue(keysetHandle1.equalsKeyset(keysetHandle2));
+  }
+
+  @Test
+  public void getPrimitive_wrongType_linksToDevsite() throws Exception {
+    KeysetHandle handle = KeysetHandle.generateNew(PredefinedAeadParameters.AES128_EAX);
+    GeneralSecurityException ex =
+        assertThrows(GeneralSecurityException.class, () -> handle.getPrimitive(Mac.class));
+    assertThat(ex)
+        .hasMessageThat()
+        .contains("https://developers.google.com/tink/faq/registration_errors");
+  }
+
+  // This keyset contains a JwtEcdsaPrivateKey with an OutputPrefixType LEGACY. This
+  // OutputPrefixType is not valid for JwtEcdsaPrivateKey.
+  private static final String KEYSET_WITH_INVALID_JWT_KEY =
+      "{  \"primaryKeyId\": 1742360595,  \"key\": [    {      \"keyData\": {        \"typeUrl\":"
+          + " \"type.googleapis.com/google.crypto.tink.JwtEcdsaPrivateKey\",        \"value\":"
+          + " \"GiBgVYdAPg3Fa2FVFymGDYrI1trHMzVjhVNEMpIxG7t0HRJGIiBeoDMF9LS5BDCh6YgqE3DjHwWwnEKE"
+          + "I3WpPf8izEx1rRogbjQTXrTcw/1HKiiZm2Hqv41w7Vd44M9koyY/+VsP+SAQAQ==\",       "
+          + " \"keyMaterialType\": \"ASYMMETRIC_PRIVATE\"      },      \"status\": \"ENABLED\",    "
+          + "  \"keyId\": 1742360595,      \"outputPrefixType\": \"LEGACY\"    }  ]}";
+
+  @Test
+  public void getPublicKeysetHandle_keysetWithInvalidKey() throws Exception {
+    // JwtSignatureConfig is not yet registered.
+
+    // Because there is no parser for JwtEcdsaPrivateKey, the entries of privateHandle
+    // contain one key of type LegacyProtoKey.
+    KeysetHandle privateHandle =
+        TinkJsonProtoKeysetFormat.parseKeyset(
+            KEYSET_WITH_INVALID_JWT_KEY, InsecureSecretKeyAccess.get());
+    Key key = privateHandle.getAt(0).getKey();
+    assertThat(key).isInstanceOf(LegacyProtoKey.class);
+    // getPublicKeysetHandle fails, because it requires a registered key manager.
+    assertThrows(GeneralSecurityException.class, privateHandle::getPublicKeysetHandle);
+
+    // JwtSignatureConfig registers parsers for JwtEcdsaPrivateKey and JwtEcdsaPublicKey,
+    // and a key manager for JwtEcdsaPrivateKey that can implements getPublicKeyData
+    JwtSignatureConfig.register();
+
+    // getPublicKeysetHandle now works, because the key manager is now registered.
+    KeysetHandle publicHandle = privateHandle.getPublicKeysetHandle();
+    // But the public key can't be parsed, so getAt fails.
+    assertThrows(IllegalStateException.class, () -> publicHandle.getAt(0));
+
+    // parseKeyset now uses the parser for JwtEcdsaPrivateKey, but parsing fails.
+    KeysetHandle privateHandle2 =
+        TinkJsonProtoKeysetFormat.parseKeyset(
+            KEYSET_WITH_INVALID_JWT_KEY, InsecureSecretKeyAccess.get());
+    assertThrows(IllegalStateException.class, () -> privateHandle2.getAt(0));
+    // getPublicKeysetHandle still work, because it uses the unparsed proto key.
+    KeysetHandle publicHandle2 = privateHandle2.getPublicKeysetHandle();
+    // But also parsing of the public key fails.
+    assertThrows(IllegalStateException.class, () -> publicHandle2.getAt(0));
+    // serializeKeysetWithoutSecret works, because it uses the unparsed proto keyset.
+    String publicJsonKeyset2 = TinkJsonProtoKeysetFormat.serializeKeysetWithoutSecret(publicHandle);
+    assertThat(publicJsonKeyset2).contains("JwtEcdsaPublicKey");
+  }
+
+  @Test
+  public void getPublicKeysetHandle_keysetWithUnknownStatus() throws Exception {
+    EcdsaPrivateKey privateKeyProto =
+        TestUtil.createEcdsaPrivKey(
+            TestUtil.createEcdsaPubKey(
+                HashType.SHA256,
+                EllipticCurveType.NIST_P256,
+                EcdsaSignatureEncoding.DER,
+                Hex.decode("d4ce489428982ef343186eb90e6a04adf41366359a508fe7ac66b283f06641ae"),
+                Hex.decode("1ff5d6f8cd044273923012b9f726d94b0c0c50f1f5d4a32f7d925b30044319fc")),
+            Hex.decode("00B8BB628605AF1045C13593F805BA7D93B35587BC66257F1EA4D93537CE26E58F"));
+    KeyData keyData =
+        TestUtil.createKeyData(
+            privateKeyProto,
+            SignatureConfig.ECDSA_PRIVATE_KEY_TYPE_URL,
+            KeyMaterialType.ASYMMETRIC_PRIVATE);
+    Keyset keyset =
+        TestUtil.createKeyset(
+            TestUtil.createKey(
+                keyData,
+                123,
+                KeyStatusType.UNKNOWN_STATUS,
+                com.google.crypto.tink.proto.OutputPrefixType.RAW));
+    KeysetHandle privateHandle =
+        TinkProtoKeysetFormat.parseKeyset(keyset.toByteArray(), InsecureSecretKeyAccess.get());
+    assertThrows(IllegalStateException.class, () -> privateHandle.getAt(0));
+    // getPublicKeysetHandle work, because it uses the unparsed proto key.
+    KeysetHandle publicHandle = privateHandle.getPublicKeysetHandle();
+    // But also parsing of the public key fails.
+    assertThrows(IllegalStateException.class, () -> publicHandle.getAt(0));
+    // serializeKeysetWithoutSecret works, because it uses the unparsed proto keyset.
+    String publicJsonKeyset = TinkJsonProtoKeysetFormat.serializeKeysetWithoutSecret(publicHandle);
+    assertThat(publicJsonKeyset).contains("EcdsaPublicKey");
+  }
+
+  @Test
+  public void getPublicKeysetHandle_keysetWithoutPrimaryKey() throws Exception {
+    EcdsaPrivateKey privateKeyProto =
+        TestUtil.createEcdsaPrivKey(
+            TestUtil.createEcdsaPubKey(
+                HashType.SHA256,
+                EllipticCurveType.NIST_P256,
+                EcdsaSignatureEncoding.DER,
+                Hex.decode("d4ce489428982ef343186eb90e6a04adf41366359a508fe7ac66b283f06641ae"),
+                Hex.decode("1ff5d6f8cd044273923012b9f726d94b0c0c50f1f5d4a32f7d925b30044319fc")),
+            Hex.decode("00B8BB628605AF1045C13593F805BA7D93B35587BC66257F1EA4D93537CE26E58F"));
+    KeyData keyData =
+        TestUtil.createKeyData(
+            privateKeyProto,
+            SignatureConfig.ECDSA_PRIVATE_KEY_TYPE_URL,
+            KeyMaterialType.ASYMMETRIC_PRIVATE);
+    Keyset validKeyset =
+        TestUtil.createKeyset(
+            TestUtil.createKey(
+                keyData,
+                123,
+                KeyStatusType.ENABLED,
+                com.google.crypto.tink.proto.OutputPrefixType.RAW));
+    KeysetHandle privateHandleWithoutPrimaryKey =
+        TinkProtoKeysetFormat.parseKeyset(
+            validKeyset.toBuilder().clearPrimaryKeyId().build().toByteArray(),
+            InsecureSecretKeyAccess.get());
+    assertThrows(IllegalStateException.class, privateHandleWithoutPrimaryKey::getPrimary);
+    KeysetHandle publicHandle = privateHandleWithoutPrimaryKey.getPublicKeysetHandle();
+    assertThrows(IllegalStateException.class, publicHandle::getPrimary);
+    String publicJsonKeyset = TinkJsonProtoKeysetFormat.serializeKeysetWithoutSecret(publicHandle);
+    assertThat(publicJsonKeyset).contains("EcdsaPublicKey");
   }
 }

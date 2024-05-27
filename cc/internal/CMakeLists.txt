@@ -534,6 +534,7 @@ tink_cc_test(
     tink::internal::proto_key_serialization
     gmock
     absl::status
+    absl::strings
     absl::optional
     tink::core::insecure_secret_key_access
     tink::core::restricted_data
@@ -775,6 +776,7 @@ tink_cc_test(
     gmock
     absl::memory
     absl::status
+    absl::optional
     tink::core::insecure_secret_key_access
     tink::core::key
     tink::core::secret_key_access_token
@@ -832,6 +834,7 @@ tink_cc_library(
     tink::core::registry
     tink::core::restricted_data
     tink::core::secret_key_access_token
+    tink::util::secret_proto
     tink::util::status
     tink::util::statusor
     tink::proto::tink_cc_proto
@@ -864,6 +867,7 @@ tink_cc_test(
     tink::mac::aes_cmac_key
     tink::mac::aes_cmac_parameters
     tink::mac::mac_key_templates
+    tink::util::secret_proto
     tink::util::status
     tink::util::statusor
     tink::util::test_matchers
@@ -889,6 +893,7 @@ tink_cc_library(
     absl::optional
     tink::core::key
     tink::core::parameters
+    tink::core::secret_key_access_token
     tink::util::status
     tink::util::statusor
 )
@@ -907,6 +912,7 @@ tink_cc_test(
     tink::internal::serialization_test_util
     gmock
     absl::status
+    absl::optional
     tink::core::insecure_secret_key_access
     tink::core::key
     tink::core::parameters
@@ -1035,7 +1041,13 @@ tink_cc_library(
   DEPS
     tink::internal::key_type_info_store
     tink::internal::keyset_wrapper_store
+    absl::status
+    absl::string_view
     tink::core::configuration
+    tink::core::key_manager
+    tink::util::status
+    tink::util::statusor
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_test(
@@ -1044,16 +1056,34 @@ tink_cc_test(
     configuration_impl_test.cc
   DEPS
     tink::internal::configuration_impl
+    tink::internal::key_type_info_store
+    tink::internal::keyset_wrapper
     tink::internal::keyset_wrapper_store
     gmock
+    absl::memory
     absl::status
     tink::core::cleartext_keyset_handle
     tink::core::configuration
+    tink::core::key_manager_impl
+    tink::core::key_type_manager
+    tink::core::private_key_type_manager
+    tink::core::template_util
+    tink::core::input_stream
+    tink::core::key_manager
+    tink::core::keyset_handle
+    tink::core::primitive_set
+    tink::core::primitive_wrapper
+    tink::core::public_key_sign
+    tink::core::public_key_verify
+    tink::core::registry
     tink::subtle::random
+    tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::aes_gcm_cc_proto
     tink::proto::rsa_ssa_pss_cc_proto
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_library(
@@ -1066,13 +1096,18 @@ tink_cc_library(
     absl::flat_hash_map
     absl::status
     absl::strings
+    absl::optional
     tink::core::key_manager_impl
     tink::core::key_type_manager
     tink::core::private_key_manager_impl
     tink::core::private_key_type_manager
+    tink::core::template_util
+    tink::core::input_stream
     tink::core::key_manager
+    tink::util::errors
     tink::util::status
     tink::util::statusor
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_test(
@@ -1083,20 +1118,25 @@ tink_cc_test(
     tink::internal::fips_utils
     tink::internal::key_type_info_store
     gmock
+    absl::memory
     absl::status
     absl::optional
     tink::core::aead
     tink::core::key_manager_impl
     tink::core::key_manager
+    tink::core::public_key_sign
+    tink::core::public_key_verify
     tink::aead::aes_gcm_key_manager
     tink::aead::cord_aead
     tink::aead::kms_envelope_aead_key_manager
     tink::signature::ecdsa_sign_key_manager
     tink::signature::ecdsa_verify_key_manager
+    tink::util::statusor
     tink::util::test_matchers
     tink::proto::aes_gcm_cc_proto
     tink::proto::common_cc_proto
     tink::proto::ecdsa_cc_proto
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_library(
@@ -1106,10 +1146,14 @@ tink_cc_library(
   DEPS
     tink::internal::keyset_wrapper
     tink::internal::keyset_wrapper_impl
+    absl::flat_hash_map
     absl::any_invocable
+    absl::status
+    absl::strings
     tink::core::primitive_wrapper
     tink::util::status
     tink::util::statusor
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_test(
@@ -1117,10 +1161,16 @@ tink_cc_test(
   SRCS
     keyset_wrapper_store_test.cc
   DEPS
+    tink::internal::keyset_wrapper
     tink::internal::keyset_wrapper_store
     tink::internal::registry_impl
     gmock
+    absl::memory
     absl::status
+    tink::core::key_type_manager
+    tink::core::template_util
+    tink::core::input_stream
+    tink::core::mac
     tink::core::primitive_set
     tink::core::primitive_wrapper
     tink::mac::mac_wrapper
@@ -1130,6 +1180,7 @@ tink_cc_test(
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::aes_gcm_cc_proto
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_library(
@@ -1138,7 +1189,12 @@ tink_cc_library(
     key_gen_configuration_impl.h
   DEPS
     tink::internal::key_type_info_store
+    absl::status
+    absl::string_view
     tink::core::key_gen_configuration
+    tink::core::key_manager
+    tink::util::status
+    tink::util::statusor
 )
 
 tink_cc_test(
@@ -1147,19 +1203,62 @@ tink_cc_test(
     key_gen_configuration_impl_test.cc
   DEPS
     tink::internal::key_gen_configuration_impl
+    tink::internal::key_type_info_store
     gmock
+    absl::memory
+    absl::status
+    tink::core::key_manager_impl
+    tink::core::key_type_manager
+    tink::core::private_key_type_manager
+    tink::core::template_util
+    tink::core::input_stream
     tink::core::key_gen_configuration
+    tink::core::key_manager
+    tink::core::keyset_handle
+    tink::core::public_key_sign
+    tink::core::public_key_verify
+    tink::core::registry
     tink::aead::aead_key_templates
+    tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::aes_gcm_cc_proto
     tink::proto::rsa_ssa_pss_cc_proto
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_library(
   NAME call_with_core_dump_protection
   SRCS
     call_with_core_dump_protection.h
+)
+
+tink_cc_test(
+  NAME call_with_core_dump_protection_test
+  SRCS
+    call_with_core_dump_protection_test.cc
+  DEPS
+    tink::internal::call_with_core_dump_protection
+    gmock
+)
+
+tink_cc_library(
+  NAME safe_stringops
+  SRCS
+    safe_stringops.h
+  DEPS
+    crypto
+    tink::internal::call_with_core_dump_protection
+)
+
+tink_cc_test(
+  NAME safe_stringops_test
+  SRCS
+    safe_stringops_test.cc
+  DEPS
+    tink::internal::safe_stringops
+    gmock
 )
 
 tink_cc_library(

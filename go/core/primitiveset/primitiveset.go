@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 // Package primitiveset provides a container for a set of cryptographic
 // primitives.
@@ -33,14 +31,14 @@ import (
 // primitive, it holds the identifier and status of the primitive.
 type Entry struct {
 	KeyID      uint32
-	Primitive  interface{}
+	Primitive  any
 	Prefix     string
 	PrefixType tinkpb.OutputPrefixType
 	Status     tinkpb.KeyStatusType
 	TypeURL    string
 }
 
-func newEntry(keyID uint32, primitive interface{}, prefix string, prefixType tinkpb.OutputPrefixType, status tinkpb.KeyStatusType, typeURL string) *Entry {
+func newEntry(keyID uint32, primitive any, prefix string, prefixType tinkpb.OutputPrefixType, status tinkpb.KeyStatusType, typeURL string) *Entry {
 	return &Entry{
 		KeyID:      keyID,
 		Primitive:  primitive,
@@ -101,7 +99,7 @@ func (ps *PrimitiveSet) EntriesForPrefix(prefix string) ([]*Entry, error) {
 }
 
 // Add creates a new entry in the primitive set and returns the added entry.
-func (ps *PrimitiveSet) Add(primitive interface{}, key *tinkpb.Keyset_Key) (*Entry, error) {
+func (ps *PrimitiveSet) Add(primitive any, key *tinkpb.Keyset_Key) (*Entry, error) {
 	if key == nil || primitive == nil {
 		return nil, fmt.Errorf("primitive_set: key and primitive must not be nil")
 	}

@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package hybrid_test
 
@@ -38,8 +36,6 @@ import (
 	commonpb "github.com/google/tink/go/proto/common_go_proto"
 	tinkpb "github.com/google/tink/go/proto/tink_go_proto"
 )
-
-const eciesAEADHKDFPrivateKeyTypeURL = "type.googleapis.com/google.crypto.tink.EciesAeadHkdfPrivateKey"
 
 func TestHybridFactoryTest(t *testing.T) {
 	c := commonpb.EllipticCurveType_NIST_P256

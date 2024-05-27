@@ -17,41 +17,41 @@
 package com.google.crypto.tink.aead;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.crypto.tink.internal.Util.isPrefix;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.KmsClients;
+import com.google.crypto.tink.RegistryConfiguration;
+import com.google.crypto.tink.TinkProtoKeysetFormat;
+import com.google.crypto.tink.aead.LegacyKmsEnvelopeAeadParameters.DekParsingStrategy;
+import com.google.crypto.tink.aead.internal.AesGcmSivProtoSerialization;
+import com.google.crypto.tink.internal.KeyManagerRegistry;
 import com.google.crypto.tink.internal.KeyTemplateProtoConverter;
-import com.google.crypto.tink.internal.KeyTypeManager;
-import com.google.crypto.tink.mac.HmacKeyManager;
-import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
-import com.google.crypto.tink.proto.KmsEnvelopeAeadKey;
+import com.google.crypto.tink.internal.Util;
 import com.google.crypto.tink.proto.KmsEnvelopeAeadKeyFormat;
 import com.google.crypto.tink.subtle.Random;
 import com.google.crypto.tink.testing.FakeKmsClient;
 import com.google.crypto.tink.testing.TestUtil;
-import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
+import java.util.Arrays;
+import javax.annotation.Nullable;
+import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for {@code KmsEnvelopeAead} and {@code KmsEnvelopeAeadKeyManager}.
- */
+/** Tests for {@code KmsEnvelopeAead} and {@code KmsEnvelopeAeadKeyManager}. */
 @RunWith(JUnit4.class)
 public class KmsEnvelopeAeadKeyManagerTest {
-  private final KmsEnvelopeAeadKeyManager manager = new KmsEnvelopeAeadKeyManager();
-  private final KeyTypeManager.KeyFactory<KmsEnvelopeAeadKeyFormat, KmsEnvelopeAeadKey> factory =
-      manager.keyFactory();
-
   @BeforeClass
   public static void setUp() throws Exception {
     KmsClients.add(new FakeKmsClient());
@@ -60,109 +60,139 @@ public class KmsEnvelopeAeadKeyManagerTest {
   }
 
   @Test
-  public void basics() throws Exception {
-    assertThat(manager.getKeyType())
-        .isEqualTo("type.googleapis.com/google.crypto.tink.KmsEnvelopeAeadKey");
-    assertThat(manager.getVersion()).isEqualTo(0);
-    assertThat(manager.keyMaterialType()).isEqualTo(KeyMaterialType.REMOTE);
+  public void testKeyManagerRegistered() throws Exception {
+    assertThat(
+            KeyManagerRegistry.globalInstance()
+                .getKeyManager(
+                    "type.googleapis.com/google.crypto.tink.KmsEnvelopeAeadKey", Aead.class))
+        .isNotNull();
   }
 
   @Test
-  public void validateKeyFormat_empty() throws Exception {
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.validateKeyFormat(KmsEnvelopeAeadKeyFormat.getDefaultInstance()));
-  }
-
-  @Test
-  public void validateKeyFormat_noKekUri() throws Exception {
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            factory.validateKeyFormat(
-                KmsEnvelopeAeadKeyFormat.newBuilder()
-                    .setDekTemplate(
-                        com.google.crypto.tink.proto.KeyTemplate.newBuilder()
-                            .setTypeUrl("foo")
-                            .setValue(ByteString.EMPTY)
-                            .build())
-                    .build()));
-  }
-
-  @Test
-  public void validateKeyFormat_noDekTemplate() throws Exception {
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            factory.validateKeyFormat(
-                KmsEnvelopeAeadKeyFormat.newBuilder().setKekUri("foo").build()));
-  }
-
-  @Test
-  public void createKeyFormatWithInvalidDekTemplate_fails() throws Exception {
+  public void getPrimitiveFromLegacyKmsEnvelopeAeadKey_works() throws Exception {
     String kekUri = FakeKmsClient.createFakeKeyUri();
-    KeyTemplate invalidDekTemplate = HmacKeyManager.hmacSha256Template();
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setKekUri(kekUri)
+            .setDekParsingStrategy(DekParsingStrategy.ASSUME_AES_EAX)
+            .setDekParametersForNewKeys(
+                AesEaxParameters.builder()
+                    .setIvSizeBytes(16)
+                    .setKeySizeBytes(16)
+                    .setTagSizeBytes(16)
+                    .setVariant(AesEaxParameters.Variant.NO_PREFIX)
+                    .build())
+            .build();
+    LegacyKmsEnvelopeAeadKey key = LegacyKmsEnvelopeAeadKey.create(parameters);
+    KeysetHandle keysetHandle =
+        KeysetHandle.newBuilder()
+            .addEntry(KeysetHandle.importKey(key).withRandomId().makePrimary())
+            .build();
 
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> KmsEnvelopeAeadKeyManager.createKeyFormat(kekUri, invalidDekTemplate));
-  }
-
-  @Test
-  public void createKey() throws Exception {
-    String kekUri = FakeKmsClient.createFakeKeyUri();
-    KeyTemplate dekTemplate = AesCtrHmacAeadKeyManager.aes128CtrHmacSha256Template();
-
-    KmsEnvelopeAeadKey key =
-        factory.createKey(KmsEnvelopeAeadKeyManager.createKeyFormat(kekUri, dekTemplate));
-    Aead aead = manager.getPrimitive(key, Aead.class);
-
-    byte[] plaintext = Random.randBytes(20);
-    byte[] associatedData = Random.randBytes(20);
-    assertThat(aead.decrypt(aead.encrypt(plaintext, associatedData), associatedData))
-        .isEqualTo(plaintext);
-  }
-
-  @Test
-  public void createKey_multipleKeysWithSameKek() throws Exception {
-    String kekUri = FakeKmsClient.createFakeKeyUri();
-    KeyTemplate dekTemplate = AesCtrHmacAeadKeyManager.aes128CtrHmacSha256Template();
-
-    KmsEnvelopeAeadKey key1 =
-        factory.createKey(KmsEnvelopeAeadKeyManager.createKeyFormat(kekUri, dekTemplate));
-    Aead aead1 = manager.getPrimitive(key1, Aead.class);
-
-    KmsEnvelopeAeadKey key2 =
-        factory.createKey(KmsEnvelopeAeadKeyManager.createKeyFormat(kekUri, dekTemplate));
-    Aead aead2 = manager.getPrimitive(key2, Aead.class);
-
-    byte[] plaintext = Random.randBytes(20);
-    byte[] associatedData = Random.randBytes(20);
-
-    assertThat(aead1.decrypt(aead2.encrypt(plaintext, associatedData), associatedData))
-        .isEqualTo(plaintext);
-  }
-
-  @Test
-  public void getPrimitive() throws Exception {
-    String kekUri = FakeKmsClient.createFakeKeyUri();
-    KeyTemplate dekTemplate = AesCtrHmacAeadKeyManager.aes128CtrHmacSha256Template();
-
-    KmsEnvelopeAeadKey key =
-        factory.createKey(KmsEnvelopeAeadKeyManager.createKeyFormat(kekUri, dekTemplate));
-    Aead aead = manager.getPrimitive(key, Aead.class);
+    Aead aead = keysetHandle.getPrimitive(Aead.class);
 
     TestUtil.runBasicAeadTests(aead);
+
+    // Also check that aead is compatible with an Aead created with KmsEnvelopeAead.create().
+    Aead keyEncryptionAead = new FakeKmsClient().getAead(kekUri);
+    Aead aead2 = KmsEnvelopeAead.create(PredefinedAeadParameters.AES128_EAX, keyEncryptionAead);
+    byte[] plaintext = Random.randBytes(20);
+    byte[] associatedData = Random.randBytes(20);
+    byte[] ciphertext = aead.encrypt(plaintext, associatedData);
+    byte[] decrypted = aead2.decrypt(ciphertext, associatedData);
+    assertThat(decrypted).isEqualTo(plaintext);
+  }
+
+  @Test
+  public void getPrimitiveFromLegacyKmsEnvelopeAeadKeyWithTinkPrefix_works() throws Exception {
+    String kekUri = FakeKmsClient.createFakeKeyUri();
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setVariant(LegacyKmsEnvelopeAeadParameters.Variant.TINK)
+            .setKekUri(kekUri)
+            .setDekParsingStrategy(DekParsingStrategy.ASSUME_AES_EAX)
+            .setDekParametersForNewKeys(
+                AesEaxParameters.builder()
+                    .setIvSizeBytes(16)
+                    .setKeySizeBytes(16)
+                    .setTagSizeBytes(16)
+                    .setVariant(AesEaxParameters.Variant.NO_PREFIX)
+                    .build())
+            .build();
+    LegacyKmsEnvelopeAeadKey key =
+        LegacyKmsEnvelopeAeadKey.create(parameters, /* idRequirement= */ 0xbbccddee);
+    KeysetHandle keysetHandle =
+        KeysetHandle.newBuilder()
+            .addEntry(KeysetHandle.importKey(key).withFixedId(0xbbccddee).makePrimary())
+            .build();
+
+    Aead aead = keysetHandle.getPrimitive(RegistryConfiguration.get(), Aead.class);
+    TestUtil.runBasicAeadTests(aead);
+
+    byte[] plaintext = Random.randBytes(20);
+    byte[] associatedData = Random.randBytes(20);
+    byte[] ciphertext = aead.encrypt(plaintext, associatedData);
+    assertThat(
+            isPrefix(
+                new byte[] {(byte) 0x01, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd, (byte) 0xee},
+                ciphertext))
+        .isTrue();
+
+    // Also check that aead is compatible with an Aead created with KmsEnvelopeAead.create(), if
+    // the 5 byte prefix is removed.
+    Aead keyEncryptionAead = new FakeKmsClient().getAead(kekUri);
+    Aead aead2 = KmsEnvelopeAead.create(PredefinedAeadParameters.AES128_EAX, keyEncryptionAead);
+    byte[] ciphertextWithoutPrefix = Arrays.copyOfRange(ciphertext, 5, ciphertext.length);
+    byte[] decrypted = aead2.decrypt(ciphertextWithoutPrefix, associatedData);
+    assertThat(decrypted).isEqualTo(plaintext);
+  }
+
+  @Test
+  public void getPrimitiveFromLegacyKmsEnvelopeAeadKey_wrongUriFails() throws Exception {
+    LegacyKmsEnvelopeAeadParameters parameters =
+        LegacyKmsEnvelopeAeadParameters.builder()
+            .setKekUri("wrong uri")
+            .setDekParsingStrategy(DekParsingStrategy.ASSUME_AES_EAX)
+            .setDekParametersForNewKeys(
+                AesEaxParameters.builder()
+                    .setIvSizeBytes(16)
+                    .setKeySizeBytes(16)
+                    .setTagSizeBytes(16)
+                    .setVariant(AesEaxParameters.Variant.NO_PREFIX)
+                    .build())
+            .build();
+    LegacyKmsEnvelopeAeadKey key = LegacyKmsEnvelopeAeadKey.create(parameters);
+    KeysetHandle keysetHandle =
+        KeysetHandle.newBuilder()
+            .addEntry(KeysetHandle.importKey(key).withRandomId().makePrimary())
+            .build();
+
+    assertThrows(GeneralSecurityException.class, () -> keysetHandle.getPrimitive(Aead.class));
   }
 
   @Test
   public void getPrimitive_parsingInvalidCiphetexts() throws Exception {
     String kekUri = FakeKmsClient.createFakeKeyUri();
-    KeyTemplate dekTemplate = AesCtrHmacAeadKeyManager.aes128CtrHmacSha256Template();
-
-    KmsEnvelopeAeadKey key =
-        factory.createKey(KmsEnvelopeAeadKeyManager.createKeyFormat(kekUri, dekTemplate));
-    Aead aead = manager.getPrimitive(key, Aead.class);
+    LegacyKmsEnvelopeAeadKey key =
+        LegacyKmsEnvelopeAeadKey.create(
+            LegacyKmsEnvelopeAeadParameters.builder()
+                .setKekUri(kekUri)
+                .setDekParsingStrategy(DekParsingStrategy.ASSUME_AES_CTR_HMAC)
+                .setDekParametersForNewKeys(
+                    AesCtrHmacAeadParameters.builder()
+                        .setAesKeySizeBytes(16)
+                        .setHmacKeySizeBytes(32)
+                        .setTagSizeBytes(16)
+                        .setIvSizeBytes(16)
+                        .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
+                        .setVariant(AesCtrHmacAeadParameters.Variant.NO_PREFIX)
+                        .build())
+                .build());
+    KeysetHandle keysetHandle =
+        KeysetHandle.newBuilder()
+            .addEntry(KeysetHandle.importKey(key).withRandomId().makePrimary())
+            .build();
+    Aead aead = keysetHandle.getPrimitive(Aead.class);
 
     byte[] plaintext = Random.randBytes(20);
     byte[] aad = Random.randBytes(20);
@@ -223,7 +253,7 @@ public class KmsEnvelopeAeadKeyManagerTest {
 
     com.google.crypto.tink.proto.KeyTemplate protoTemplate =
         KeyTemplateProtoConverter.toProto(template);
-    assertThat(new KmsEnvelopeAeadKeyManager().getKeyType()).isEqualTo(protoTemplate.getTypeUrl());
+    assertThat(KmsEnvelopeAeadKeyManager.getKeyType()).isEqualTo(protoTemplate.getTypeUrl());
     assertThat(com.google.crypto.tink.proto.OutputPrefixType.RAW)
         .isEqualTo(protoTemplate.getOutputPrefixType());
 
@@ -443,6 +473,33 @@ public class KmsEnvelopeAeadKeyManagerTest {
   }
 
   @Test
+  public void createKeyTemplateGenerateNewGetPrimitive_isSameAs_create() throws Exception {
+    @Nullable Integer apiLevel = Util.getAndroidApiLevel();
+    Assume.assumeTrue(apiLevel == null || apiLevel >= 30); // Run the test on java and android >= 30
+
+    String keyUri = FakeKmsClient.createFakeKeyUri();
+
+    // Create Aead primitive using createKeyTemplate, generateNew, and getPrimitive.
+    // This requires that a KmsClient that supports keyUri is registered.
+    KeyTemplate template =
+        KmsEnvelopeAeadKeyManager.createKeyTemplate(keyUri, KeyTemplates.get("AES128_GCM"));
+    KeysetHandle keysetHandle = KeysetHandle.generateNew(template);
+    Aead aead1 = keysetHandle.getPrimitive(Aead.class);
+
+    // Create Aead using FakeKmsClient.getAead and KmsEnvelopeAead.create.
+    // No KmsClient needs to be registered.
+    Aead keyEncryptionAead = new FakeKmsClient().getAead(keyUri);
+    Aead aead2 = KmsEnvelopeAead.create(PredefinedAeadParameters.AES256_GCM, keyEncryptionAead);
+
+    // Test that aead1 and aead2 are the same.
+    byte[] plaintext = Random.randBytes(20);
+    byte[] associatedData = Random.randBytes(20);
+    byte[] ciphertext = aead1.encrypt(plaintext, associatedData);
+    byte[] decrypted = aead2.decrypt(ciphertext, associatedData);
+    assertThat(decrypted).isEqualTo(plaintext);
+  }
+
+  @Test
   public void multipleAeadsWithSameKekAndSameDekTemplate_canDecryptEachOther() throws Exception {
     String kekUri = FakeKmsClient.createFakeKeyUri();
     KeyTemplate dekTemplate = AesCtrHmacAeadKeyManager.aes128CtrHmacSha256Template();
@@ -553,5 +610,17 @@ public class KmsEnvelopeAeadKeyManagerTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> KmsEnvelopeAeadKeyManager.createKeyTemplate(kekUri, dekTemplate));
+  }
+
+  @Test
+  public void testSerializeAndParse_works() throws Exception {
+    String kekUri = FakeKmsClient.createFakeKeyUri();
+    KeyTemplate dek1Template = AesCtrHmacAeadKeyManager.aes128CtrHmacSha256Template();
+    KeysetHandle handle =
+        KeysetHandle.generateNew(KmsEnvelopeAeadKeyManager.createKeyTemplate(kekUri, dek1Template));
+    byte[] serialized = TinkProtoKeysetFormat.serializeKeysetWithoutSecret(handle);
+    KeysetHandle parsed = TinkProtoKeysetFormat.parseKeysetWithoutSecret(serialized);
+
+    assertTrue(handle.equalsKeyset(parsed));
   }
 }

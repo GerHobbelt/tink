@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc.
+// Copyright 2017 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,10 +18,9 @@ package com.google.crypto.tink;
 
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyManagerRegistry;
-import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
-import com.google.crypto.tink.internal.PrivateKeyTypeManager;
+import com.google.crypto.tink.internal.PrimitiveSet;
 import com.google.crypto.tink.prf.Prf;
 import com.google.crypto.tink.proto.KeyData;
 import com.google.protobuf.ByteString;
@@ -36,7 +35,6 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import javax.annotation.Nullable;
 
@@ -83,12 +81,6 @@ import javax.annotation.Nullable;
 public final class Registry {
   private static final Logger logger = Logger.getLogger(Registry.class.getName());
 
-  private static final AtomicReference<KeyManagerRegistry> keyManagerRegistry =
-      new AtomicReference<>(new KeyManagerRegistry());
-
-  private static final ConcurrentMap<String, Boolean> newKeyAllowedMap =
-      new ConcurrentHashMap<>(); // typeUrl -> newKeyAllowed mapping
-
   private static final ConcurrentMap<String, Catalogue<?>> catalogueMap =
       new ConcurrentHashMap<>(); //  name -> catalogue mapping
 
@@ -101,9 +93,8 @@ public final class Registry {
    * <p>This method is intended for testing.
    */
   static synchronized void reset() {
-    keyManagerRegistry.set(new KeyManagerRegistry());
+    KeyManagerRegistry.resetGlobalInstanceTestOnly();
     MutablePrimitiveRegistry.resetGlobalInstanceTestOnly();
-    newKeyAllowedMap.clear();
     catalogueMap.clear();
   }
 
@@ -235,50 +226,10 @@ public final class Registry {
               + " has been disabled. Please file an issue on"
               + " https://github.com/tink-crypto/tink-java");
     }
-    KeyManagerRegistry newKeyManagerRegistry = new KeyManagerRegistry(keyManagerRegistry.get());
-    newKeyManagerRegistry.registerKeyManager(manager);
-
     if (!TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS.isCompatible()) {
       throw new GeneralSecurityException("Registering key managers is not supported in FIPS mode");
     }
-    String typeUrl = manager.getKeyType();
-    // Use an empty key format because old-style key managers don't export their key formats
-    ensureKeyManagerInsertable(typeUrl, newKeyAllowed);
-    newKeyAllowedMap.put(typeUrl, Boolean.valueOf(newKeyAllowed));
-    keyManagerRegistry.set(newKeyManagerRegistry);
-  }
-
-  /**
-   * Tries to register {@code manager} for {@code manager.getKeyType()}. If {@code newKeyAllowed} is
-   * true, users can generate new keys with this manager using the {@link Registry#newKey} methods.
-   *
-   * <p>If there is an existing key manager, throws an exception if {@code manager} and the existing
-   * key manager aren't instances of the same class, or if {@code newKeyAllowed} is true while the
-   * existing key manager could not create new keys. Otherwise registration succeeds.
-   *
-   * <p>If {@code newKeyAllowed} is true, also tries to register the key templates supported by
-   * {@code manager}.
-   *
-   * @throws GeneralSecurityException if there's an existing key manager is not an instance of the
-   *     class of {@code manager}, or the registration tries to re-enable the generation of new
-   *     keys.
-   * @throws GeneralSecurityException if there's an existing key template.
-   * @throws GeneralSecurityException if the key manager is not compatible with the restrictions in
-   *     FIPS-mode.
-   */
-  public static synchronized <KeyProtoT extends MessageLite> void registerKeyManager(
-      final KeyTypeManager<KeyProtoT> manager, boolean newKeyAllowed)
-      throws GeneralSecurityException {
-    if (manager == null) {
-      throw new IllegalArgumentException("key manager must be non-null.");
-    }
-    KeyManagerRegistry newKeyManagerRegistry = new KeyManagerRegistry(keyManagerRegistry.get());
-    newKeyManagerRegistry.registerKeyManager(manager);
-    String typeUrl = manager.getKeyType();
-    ensureKeyManagerInsertable(typeUrl, newKeyAllowed);
-
-    newKeyAllowedMap.put(typeUrl, Boolean.valueOf(newKeyAllowed));
-    keyManagerRegistry.set(newKeyManagerRegistry);
+    KeyManagerRegistry.globalInstance().registerKeyManager(manager, newKeyAllowed);
   }
 
   /**
@@ -324,101 +275,6 @@ public final class Registry {
   }
 
   /**
-   * Throws a general security exception if one of these conditions holds:
-   *
-   * <ul>
-   *   <li>There is already a key manager registered for {@code typeURL}, and at least one of the
-   *       following is true:
-   *       <ul>
-   *         <li>The class implementing the existing key manager differs from the given one.
-   *         <li>The value of {@code newKeyAllowed} currently registered is false, but the input
-   *             parameter is true.
-   *       </ul>
-   *   <li>The {@code newKeyAllowed} flag is true, and at least one of the following is true:
-   *       <ul>
-   *         <li>The key manager was already registered, but it contains new key templates.
-   *         <li>The key manager is new, but it contains existing key templates.
-   */
-  private static synchronized void ensureKeyManagerInsertable(String typeUrl, boolean newKeyAllowed)
-      throws GeneralSecurityException {
-    if (newKeyAllowed && newKeyAllowedMap.containsKey(typeUrl) && !newKeyAllowedMap.get(typeUrl)) {
-      throw new GeneralSecurityException("New keys are already disallowed for key type " + typeUrl);
-    }
-  }
-
-  /**
-   * Tries to register {@code manager} for {@code manager.getKeyType()}. If {@code newKeyAllowed} is
-   * true, users can generate new keys with this manager using the {@link Registry#newKey} methods.
-   *
-   * <p>If {@code newKeyAllowed} is true, also tries to register the key templates supported by
-   * {@code manager}.
-   *
-   * <p>If there is an existing key manager, throws an exception if {@code manager} and the existing
-   * key manager aren't instances of the same class, or if {@code newKeyAllowed} is true while the
-   * existing key manager could not create new keys. Otherwise registration succeeds.
-   *
-   * @throws GeneralSecurityException if there's an existing key manager is not an instance of the
-   *     class of {@code manager}, or the registration tries to re-enable the generation of new
-   *     keys.
-   * @throws GeneralSecurityException if there's an existing key template.
-   */
-  public static synchronized <KeyProtoT extends MessageLite, PublicKeyProtoT extends MessageLite>
-      void registerAsymmetricKeyManagers(
-          final PrivateKeyTypeManager<KeyProtoT, PublicKeyProtoT> privateKeyTypeManager,
-          final KeyTypeManager<PublicKeyProtoT> publicKeyTypeManager,
-          boolean newKeyAllowed)
-          throws GeneralSecurityException {
-    if (privateKeyTypeManager == null || publicKeyTypeManager == null) {
-      throw new IllegalArgumentException("given key managers must be non-null.");
-    }
-    KeyManagerRegistry newKeyManagerRegistry = new KeyManagerRegistry(keyManagerRegistry.get());
-    newKeyManagerRegistry.registerAsymmetricKeyManagers(
-        privateKeyTypeManager, publicKeyTypeManager);
-
-    String privateTypeUrl = privateKeyTypeManager.getKeyType();
-    String publicTypeUrl = publicKeyTypeManager.getKeyType();
-    ensureKeyManagerInsertable(privateTypeUrl, newKeyAllowed);
-    // No key format because a public key manager cannot create new keys
-    ensureKeyManagerInsertable(publicTypeUrl, false);
-
-    newKeyAllowedMap.put(privateTypeUrl, newKeyAllowed);
-    newKeyAllowedMap.put(publicTypeUrl, false);
-
-    keyManagerRegistry.set(newKeyManagerRegistry);
-  }
-
-  /**
-   * Tries to register {@code wrapper} as a new SetWrapper for primitive {@code P}.
-   *
-   * <p>If no SetWrapper is registered for {@code P}, registers the given one. If there already is a
-   * SetWrapper registered which is of the same class ass the passed in set wrapper, the call is
-   * silently ignored. If the new set wrapper is of a different type, the call fails with a {@code
-   * GeneralSecurityException}.
-   *
-   * @throws GeneralSecurityException if there's an existing key manager and it is not an instance
-   *     of the class of {@code manager}, or the registration tries to re-enable the generation of
-   *     new keys.
-   */
-  public static synchronized <B, P> void registerPrimitiveWrapper(
-      final PrimitiveWrapper<B, P> wrapper) throws GeneralSecurityException {
-    MutablePrimitiveRegistry.globalInstance().registerPrimitiveWrapper(wrapper);
-  }
-
-  /**
-   * Returns a {@link KeyManager} for the given {@code typeUrl} (if found).
-   *
-   * @deprecated KeyManagers should not be used directly. Use {@code newKeyData} or {@code
-   *     getPrimitive} instead.
-   */
-  @Deprecated
-  public static <P> KeyManager<P> getKeyManager(String typeUrl)
-      throws GeneralSecurityException {
-    @SuppressWarnings("unchecked") // Unavoidable for the API we implement (hence it is deprecated)
-    KeyManager<P> result = (KeyManager<P>) getUntypedKeyManager(typeUrl);
-    return result;
-  }
-
-  /**
    * Returns a {@link KeyManager} for the given {@code typeUrl} (if found).
    *
    * @deprecated KeyManagers should not be used directly. Use {@code newKeyData} or {@code
@@ -427,7 +283,7 @@ public final class Registry {
   @Deprecated
   public static <P> KeyManager<P> getKeyManager(String typeUrl, Class<P> primitiveClass)
       throws GeneralSecurityException {
-    return keyManagerRegistry.get().getKeyManager(typeUrl, primitiveClass);
+    return KeyManagerRegistry.globalInstance().getKeyManager(typeUrl, primitiveClass);
   }
 
   /**
@@ -439,7 +295,7 @@ public final class Registry {
   @Deprecated
   public static KeyManager<?> getUntypedKeyManager(String typeUrl)
       throws GeneralSecurityException {
-    return keyManagerRegistry.get().getUntypedKeyManager(typeUrl);
+    return KeyManagerRegistry.globalInstance().getUntypedKeyManager(typeUrl);
   }
 
   /**
@@ -451,11 +307,16 @@ public final class Registry {
    * <p>This method should be used solely for key management.
    *
    * @return a new {@link KeyData}
+   * @deprecated Use {@code KeysetHandle.generateNew} with a Parameters object instead. To convert a
+   *     proto KeyTemplate to a parameters one can use {@code
+   *     TinkProtoParametersFormat.parse(t.toByteArray());}
    */
+  @Deprecated
   public static synchronized KeyData newKeyData(
       com.google.crypto.tink.proto.KeyTemplate keyTemplate) throws GeneralSecurityException {
-    KeyManager<?> manager = keyManagerRegistry.get().getUntypedKeyManager(keyTemplate.getTypeUrl());
-    if (newKeyAllowedMap.get(keyTemplate.getTypeUrl()).booleanValue()) {
+    KeyManager<?> manager =
+        KeyManagerRegistry.globalInstance().getUntypedKeyManager(keyTemplate.getTypeUrl());
+    if (KeyManagerRegistry.globalInstance().isNewKeyAllowed(keyTemplate.getTypeUrl())) {
       return manager.newKeyData(keyTemplate.getValue());
     } else {
       throw new GeneralSecurityException(
@@ -472,9 +333,12 @@ public final class Registry {
    * <p>This method should be used solely for key management.
    *
    * @return a new {@link KeyData}
+   * @deprecated Use {@code KeysetHandle.generateNew(keyTemplate.toParameters())} instead and use
+   *     the Keyset Handle API.
    */
-  public static synchronized KeyData newKeyData(com.google.crypto.tink.KeyTemplate keyTemplate)
-      throws GeneralSecurityException {
+  @Deprecated
+  public static synchronized KeyData newKeyData(
+      com.google.crypto.tink.KeyTemplate keyTemplate) throws GeneralSecurityException {
     byte[] serializedKeyTemplate = TinkProtoParametersFormat.serialize(keyTemplate.toParameters());
     try {
       return newKeyData(
@@ -498,7 +362,7 @@ public final class Registry {
   public static synchronized MessageLite newKey(
       com.google.crypto.tink.proto.KeyTemplate keyTemplate) throws GeneralSecurityException {
     KeyManager<?> manager = getUntypedKeyManager(keyTemplate.getTypeUrl());
-    if (newKeyAllowedMap.get(keyTemplate.getTypeUrl()).booleanValue()) {
+    if (KeyManagerRegistry.globalInstance().isNewKeyAllowed(keyTemplate.getTypeUrl())) {
       return manager.newKey(keyTemplate.getValue());
     } else {
       throw new GeneralSecurityException(
@@ -518,8 +382,8 @@ public final class Registry {
   @Deprecated
   public static synchronized MessageLite newKey(String typeUrl, MessageLite format)
       throws GeneralSecurityException {
-    KeyManager<?> manager = getKeyManager(typeUrl);
-    if (newKeyAllowedMap.get(typeUrl).booleanValue()) {
+    KeyManager<?> manager = getUntypedKeyManager(typeUrl);
+    if (KeyManagerRegistry.globalInstance().isNewKeyAllowed(typeUrl)) {
       return manager.newKey(format);
     } else {
       throw new GeneralSecurityException("newKey-operation not permitted for key type " + typeUrl);
@@ -532,33 +396,19 @@ public final class Registry {
    * <p>It looks up a {@link PrivateKeyManager} identified by {@code typeUrl}, and calls {@link
    * PrivateKeyManager#getPublicKeyData} with {@code serializedPrivateKey} as the parameter.
    *
-   * @return a new key
+   * @return the public key of the corresponding private key
+   * @deprecated Instead, users should have their keys in a {@link KeysetHandle} and call {@code
+   *     keysetHandle.getPublicKeysetHandle}.
    */
+  @Deprecated
   public static KeyData getPublicKeyData(String typeUrl, ByteString serializedPrivateKey)
       throws GeneralSecurityException {
-    KeyManager<?> manager = getKeyManager(typeUrl);
+    KeyManager<?> manager = getUntypedKeyManager(typeUrl);
     if (!(manager instanceof PrivateKeyManager)) {
       throw new GeneralSecurityException(
           "manager for key type " + typeUrl + " is not a PrivateKeyManager");
     }
     return ((PrivateKeyManager) manager).getPublicKeyData(serializedPrivateKey);
-  }
-
-  /**
-   * Creates a new primitive for the key given in {@code proto}.
-   *
-   * <p>It looks up a {@link KeyManager} identified by {@code type_url}, and calls {@link
-   * KeyManager#getPrimitive} with {@code key} as the parameter.
-   *
-   * @return a new primitive
-   * @deprecated Use {@code getPrimitive(typeUrl, serializedKey, P.class)} instead.
-   */
-  @SuppressWarnings("TypeParameterUnusedInFormals")
-  @Deprecated
-  public static <P> P getPrimitive(String typeUrl, MessageLite key)
-      throws GeneralSecurityException {
-    KeyManager<P> manager = getKeyManager(typeUrl);
-    return manager.getPrimitive(key.toByteString());
   }
 
   /**
@@ -573,25 +423,9 @@ public final class Registry {
   @Deprecated
   public static <P> P getPrimitive(
       String typeUrl, MessageLite key, Class<P> primitiveClass) throws GeneralSecurityException {
-    KeyManager<P> manager = keyManagerRegistry.get().getKeyManager(typeUrl, primitiveClass);
+    KeyManager<P> manager =
+        KeyManagerRegistry.globalInstance().getKeyManager(typeUrl, primitiveClass);
     return manager.getPrimitive(key.toByteString());
-  }
-
-  /**
-   * Creates a new primitive for the key given in {@code proto}.
-   *
-   * <p>It looks up a {@link KeyManager} identified by {@code type_url}, and calls {@link
-   * KeyManager#getPrimitive} with {@code serializedKey} as the parameter.
-   *
-   * @return a new primitive
-   * @deprecated Use {@code getPrimitive(typeUrl, serializedKey, Primitive.class} instead.
-   */
-  @SuppressWarnings("TypeParameterUnusedInFormals")
-  @Deprecated
-  public static <P> P getPrimitive(String typeUrl, ByteString serializedKey)
-      throws GeneralSecurityException {
-    KeyManager<P> manager = getKeyManager(typeUrl);
-    return manager.getPrimitive(serializedKey);
   }
 
   /**
@@ -605,24 +439,9 @@ public final class Registry {
   public static <P> P getPrimitive(
       String typeUrl, ByteString serializedKey, Class<P> primitiveClass)
       throws GeneralSecurityException {
-    KeyManager<P> manager = keyManagerRegistry.get().getKeyManager(typeUrl, primitiveClass);
+    KeyManager<P> manager =
+        KeyManagerRegistry.globalInstance().getKeyManager(typeUrl, primitiveClass);
     return manager.getPrimitive(serializedKey);
-  }
-
-  /**
-   * Creates a new primitive for the key given in {@code serializedKey}.
-   *
-   * <p>It looks up a {@link KeyManager} identified by {@code type_url}, and calls {@link
-   * KeyManager#getPrimitive} with {@code serialized} as the parameter.
-   *
-   * @deprecated Use {@code getPrimitive(typeUrl, serializedKey, Primitive.class)} instead.
-   * @return a new primitive
-   */
-  @SuppressWarnings("TypeParameterUnusedInFormals")
-  @Deprecated
-  public static <P> P getPrimitive(String typeUrl, byte[] serializedKey)
-      throws GeneralSecurityException {
-    return getPrimitive(typeUrl, ByteString.copyFrom(serializedKey));
   }
 
   /**
@@ -636,21 +455,6 @@ public final class Registry {
   public static <P> P getPrimitive(String typeUrl, byte[] serializedKey, Class<P> primitiveClass)
       throws GeneralSecurityException {
     return getPrimitive(typeUrl, ByteString.copyFrom(serializedKey), primitiveClass);
-  }
-
-  /**
-   * Creates a new primitive for the key given in {@code keyData}.
-   *
-   * <p>It looks up a {@link KeyManager} identified by {@code keyData.type_url}, and calls {@link
-   * KeyManager#getPrimitive} with {@code keyData.value} as the parameter.
-   *
-   * @return a new primitive
-   * @deprecated Use {@code getPrimitive(keyData, Primitive.class)} instead.
-   */
-  @SuppressWarnings("TypeParameterUnusedInFormals")
-  @Deprecated
-  public static <P> P getPrimitive(KeyData keyData) throws GeneralSecurityException {
-    return getPrimitive(keyData.getTypeUrl(), keyData.getValue());
   }
 
   /**
@@ -717,15 +521,7 @@ public final class Registry {
    * @throws GeneralSecurityException if any key manager has already been registered.
    */
   public static synchronized void restrictToFipsIfEmpty() throws GeneralSecurityException {
-    // If we are already using FIPS mode, do nothing.
-    if (TinkFipsUtil.useOnlyFips()) {
-      return;
-    }
-    if (keyManagerRegistry.get().isEmpty()) {
-      TinkFipsUtil.setFipsRestricted();
-      return;
-    }
-    throw new GeneralSecurityException("Could not enable FIPS mode as Registry is not empty.");
+    KeyManagerRegistry.globalInstance().restrictToFipsIfEmptyAndGlobalInstance();
   }
 
   private Registry() {}

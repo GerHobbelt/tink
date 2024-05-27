@@ -23,21 +23,20 @@ go_library(
 go_test(
     name = "gcpkms_test",
     srcs = [
+        "gcp_kms_aead_test.go",
         "gcp_kms_client_test.go",
         "gcp_kms_integration_test.go",
     ],
     data = [
-        # Credentials can be injected into the test files included in these
-        # targets.
+        # Google Cloud KMS credentials to be used.
         "//testdata/gcp:credentials",
-        "//testdata/keysets:ecies",
         "@google_root_pem//file",  #keep
-        "@wycheproof//testvectors:all",  #keep
     ],
+    embed = [":gcpkms"],
     tags = ["manual"],
     deps = [
-        ":gcpkms",
         "//aead",
+        "@org_golang_google_api//cloudkms/v1:cloudkms",
         "@org_golang_google_api//option",
     ],
 )

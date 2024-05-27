@@ -368,10 +368,9 @@ TEST_P(AesGcmSivProtoSerializationTest, SerializeKey) {
   EXPECT_THAT(proto_serialization->IdRequirement(), Eq(test_case.id));
 
   google::crypto::tink::AesGcmSivKey proto_key;
-  // OSS proto library complains if input is not converted to a string.
-  ASSERT_THAT(proto_key.ParseFromString(std::string(
+  ASSERT_THAT(proto_key.ParseFromString(
                   proto_serialization->SerializedKeyProto().GetSecret(
-                      InsecureSecretKeyAccess::Get()))),
+                      InsecureSecretKeyAccess::Get())),
               IsTrue());
   EXPECT_THAT(proto_key.key_value().size(), Eq(test_case.key_size));
 }

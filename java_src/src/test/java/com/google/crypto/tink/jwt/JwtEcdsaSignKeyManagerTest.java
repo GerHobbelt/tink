@@ -18,27 +18,27 @@ package com.google.crypto.tink.jwt;
 import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeFalse;
 
+import com.google.crypto.tink.InsecureSecretKeyAccess;
+import com.google.crypto.tink.Key;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
+import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.PublicKeySign;
-import com.google.crypto.tink.internal.KeyTypeManager;
-import com.google.crypto.tink.proto.JwtEcdsaAlgorithm;
-import com.google.crypto.tink.proto.JwtEcdsaKeyFormat;
-import com.google.crypto.tink.proto.JwtEcdsaPrivateKey;
-import com.google.crypto.tink.proto.JwtEcdsaPublicKey;
-import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
+import com.google.crypto.tink.TinkProtoKeysetFormat;
+import com.google.crypto.tink.internal.KeyManagerRegistry;
+import com.google.crypto.tink.internal.MutableKeyCreationRegistry;
 import com.google.crypto.tink.signature.EcdsaParameters;
 import com.google.crypto.tink.signature.EcdsaPrivateKey;
 import com.google.crypto.tink.signature.EcdsaPublicKey;
 import com.google.crypto.tink.signature.SignatureConfig;
 import com.google.crypto.tink.subtle.Base64;
-import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.testing.TestUtil;
 import com.google.gson.JsonObject;
-import com.google.protobuf.ByteString;
+import java.math.BigInteger;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Set;
@@ -61,117 +61,30 @@ public class JwtEcdsaSignKeyManagerTest {
     SignatureConfig.register();
   }
 
-  private final JwtEcdsaSignKeyManager manager = new JwtEcdsaSignKeyManager();
-  private final KeyTypeManager.KeyFactory<JwtEcdsaKeyFormat, JwtEcdsaPrivateKey> factory =
-      manager.keyFactory();
-
-  private static JwtEcdsaKeyFormat createKeyFormat(JwtEcdsaAlgorithm algorithm) {
-    return JwtEcdsaKeyFormat.newBuilder().setAlgorithm(algorithm).build();
-  }
-
   @DataPoints("parametersAlgos")
-  public static final JwtEcdsaAlgorithm[] PARAMETERS_ALGOS =
-      new JwtEcdsaAlgorithm[] {
-        JwtEcdsaAlgorithm.ES256, JwtEcdsaAlgorithm.ES384, JwtEcdsaAlgorithm.ES512
+  public static final JwtEcdsaParameters.Algorithm[] PARAMETERS_ALGOS =
+      new JwtEcdsaParameters.Algorithm[] {
+        JwtEcdsaParameters.Algorithm.ES256,
+        JwtEcdsaParameters.Algorithm.ES384,
+        JwtEcdsaParameters.Algorithm.ES512
       };
 
   @DataPoints("templates")
   public static final String[] TEMPLATES =
       new String[] {
-        "JWT_ES256", "JWT_ES384", "JWT_ES512", "JWT_ES256_RAW", "JWT_ES384_RAW", "JWT_ES512_RAW",
+        "JWT_ES256", "JWT_ES384_RAW", "JWT_ES512",
       };
 
   @Test
-  public void basics() throws Exception {
-    assertThat(manager.getKeyType())
-        .isEqualTo("type.googleapis.com/google.crypto.tink.JwtEcdsaPrivateKey");
-    assertThat(manager.getVersion()).isEqualTo(0);
-    assertThat(manager.keyMaterialType()).isEqualTo(KeyMaterialType.ASYMMETRIC_PRIVATE);
-  }
-
-  @Test
-  public void validateKeyFormat_empty_throw() throws Exception {
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.validateKeyFormat(JwtEcdsaKeyFormat.getDefaultInstance()));
-  }
-
-  // Note: we use Theory as a parametrized test -- different from what the Theory framework intends.
-  @Theory
-  public void validateKeyFormat_ok(@FromDataPoints("parametersAlgos") JwtEcdsaAlgorithm algorithm)
-      throws GeneralSecurityException {
-    JwtEcdsaKeyFormat format = createKeyFormat(algorithm);
-    factory.validateKeyFormat(format);
-  }
-
-  private static void checkConsistency(JwtEcdsaPrivateKey privateKey, JwtEcdsaKeyFormat keyFormat) {
-    assertThat(privateKey.getPublicKey().getAlgorithm()).isEqualTo(keyFormat.getAlgorithm());
-  }
-
-  // Note: we use Theory as a parametrized test -- different from what the Theory framework intends.
-  @Theory
-  public void createKeys_ok(@FromDataPoints("parametersAlgos") JwtEcdsaAlgorithm algorithm)
-      throws Exception {
-
-    JwtEcdsaKeyFormat format = createKeyFormat(algorithm);
-    JwtEcdsaPrivateKey key = factory.createKey(format);
-    checkConsistency(key, format);
-  }
-
-  // Note: we use Theory as a parametrized test -- different from what the Theory framework intends.
-  @Theory
-  public void createKey_alwaysNewElement_ok(
-      @FromDataPoints("parametersAlgos") JwtEcdsaAlgorithm algorithm) throws Exception {
-
-    JwtEcdsaKeyFormat format = createKeyFormat(algorithm);
-    Set<String> keys = new TreeSet<>();
-    // Calls newKey multiple times and make sure that they generate different keys -- takes about a
-    // second per key.
-    int numTests = 5;
-    for (int i = 0; i < numTests; i++) {
-      JwtEcdsaPrivateKey key = factory.createKey(format);
-      keys.add(Hex.encode(key.getKeyValue().toByteArray()));
+  public void callingCreateTwiceGivesDifferentKeys() throws Exception {
+    int numKeys = 10;
+    Parameters p = KeyTemplates.get("JWT_ES256").toParameters();
+    Set<BigInteger> keys = new TreeSet<>();
+    for (int i = 0; i < numKeys; ++i) {
+      JwtEcdsaPrivateKey key = (JwtEcdsaPrivateKey) KeysetHandle.generateNew(p).getAt(0).getKey();
+      keys.add(key.getPrivateValue().getBigInteger(InsecureSecretKeyAccess.get()));
     }
-    assertThat(keys).hasSize(numTests);
-  }
-
-  // Note: we use Theory as a parametrized test -- different from what the Theory framework intends.
-  @Theory
-  public void getPublicKey_checkValues(
-      @FromDataPoints("parametersAlgos") JwtEcdsaAlgorithm algorithm) throws Exception {
-    JwtEcdsaPrivateKey privateKey = factory.createKey(createKeyFormat(algorithm));
-    JwtEcdsaPublicKey publicKey = manager.getPublicKey(privateKey);
-
-    assertThat(publicKey).isEqualTo(privateKey.getPublicKey());
-  }
-
-  // Note: we use Theory as a parametrized test -- different from what the Theory framework intends.
-  @Theory
-  public void createCorruptedPublicKeyPrimitive_throws(
-      @FromDataPoints("parametersAlgos") JwtEcdsaAlgorithm algorithm) throws Exception {
-
-    JwtEcdsaKeyFormat format = createKeyFormat(algorithm);
-    JwtEcdsaPrivateKey originalKey = factory.createKey(format);
-    byte[] originalPubX = originalKey.getPublicKey().getX().toByteArray();
-    byte[] originalPubY = originalKey.getPublicKey().getY().toByteArray();
-    originalPubX[0] = (byte) (originalPubX[0] ^ 0x01);
-    ByteString corruptedPubX = ByteString.copyFrom(originalPubX);
-    JwtEcdsaPublicKey corruptedPub =
-        JwtEcdsaPublicKey.newBuilder()
-            .setVersion(originalKey.getPublicKey().getVersion())
-            .setAlgorithm(algorithm)
-            .setX(corruptedPubX)
-            .setY(ByteString.copyFrom(originalPubY))
-            .build();
-    JwtEcdsaPrivateKey corruptedKey =
-        JwtEcdsaPrivateKey.newBuilder()
-            .setVersion(originalKey.getVersion())
-            .setPublicKey(corruptedPub)
-            .setKeyValue(originalKey.getKeyValue())
-            .build();
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> manager.getPrimitive(corruptedKey, JwtPublicKeySignInternal.class));
+    assertThat(keys).hasSize(numKeys);
   }
 
   @Test
@@ -246,6 +159,66 @@ public class JwtEcdsaSignKeyManagerTest {
     assertThat(h.size()).isEqualTo(1);
     assertThat(h.getAt(0).getKey().getParameters())
         .isEqualTo(KeyTemplates.get(templateName).toParameters());
+  }
+
+  @Test
+  public void ignoredKidStrategy_createKeyWithoutIdRequirement_works() throws Exception {
+    if (TestUtil.isTsan()) {
+      // createKey is too slow in Tsan.
+      return;
+    }
+    Parameters parameters =
+        JwtEcdsaParameters.builder()
+            .setAlgorithm(JwtEcdsaParameters.Algorithm.ES256)
+            .setKidStrategy(JwtEcdsaParameters.KidStrategy.IGNORED)
+            .build();
+    Key unused = MutableKeyCreationRegistry.globalInstance().createKey(parameters, null);
+  }
+
+  @Test
+  public void ignoredKidStrategy_createKeyWithIdRequirement_throws() throws Exception {
+    if (TestUtil.isTsan()) {
+      // createKey is too slow in Tsan.
+      return;
+    }
+    Parameters parameters =
+        JwtEcdsaParameters.builder()
+            .setAlgorithm(JwtEcdsaParameters.Algorithm.ES256)
+            .setKidStrategy(JwtEcdsaParameters.KidStrategy.IGNORED)
+            .build();
+    assertThrows(
+        GeneralSecurityException.class,
+        () -> MutableKeyCreationRegistry.globalInstance().createKey(parameters, 123));
+  }
+
+  @Test
+  public void base64KidStrategy_createKeyWithIdRequirement_works() throws Exception {
+    if (TestUtil.isTsan()) {
+      // createKey is too slow in Tsan.
+      return;
+    }
+    Parameters parameters =
+        JwtEcdsaParameters.builder()
+            .setAlgorithm(JwtEcdsaParameters.Algorithm.ES256)
+            .setKidStrategy(JwtEcdsaParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+            .build();
+    Key unused = MutableKeyCreationRegistry.globalInstance().createKey(parameters, 123);
+  }
+
+  @Test
+  public void base64KidStrategy_createKeyWithoutIdRequirement_thows() throws Exception {
+    if (TestUtil.isTsan()) {
+      // createKey is too slow in Tsan.
+      return;
+    }
+    Parameters parameters =
+        JwtEcdsaParameters.builder()
+            .setAlgorithm(JwtEcdsaParameters.Algorithm.ES256)
+            .setKidStrategy(JwtEcdsaParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+            .build();
+    assertThrows(
+        GeneralSecurityException.class,
+        () -> MutableKeyCreationRegistry.globalInstance().createKey(parameters, null));
   }
 
   // Note: we use Theory as a parametrized test -- different from what the Theory framework intends.
@@ -658,5 +631,25 @@ public class JwtEcdsaSignKeyManagerTest {
     assertThrows(
         JwtInvalidException.class,
         () -> verifierWithWrongKid.verifyAndDecode(signedCompactWithKid, validator));
+  }
+
+  @Test
+  public void serializeAndDeserializeKeysets() throws Exception {
+    KeyTemplate template = KeyTemplates.get("JWT_ES256_RAW");
+    KeysetHandle handle = KeysetHandle.generateNew(template);
+
+    byte[] serializedKeyset =
+        TinkProtoKeysetFormat.serializeKeyset(handle, InsecureSecretKeyAccess.get());
+    KeysetHandle parsed =
+        TinkProtoKeysetFormat.parseKeyset(serializedKeyset, InsecureSecretKeyAccess.get());
+    assertTrue(parsed.equalsKeyset(handle));
+  }
+
+  @Test
+  public void testKeyManagersRegistered() throws Exception {
+    assertThat(
+            KeyManagerRegistry.globalInstance()
+                .getUntypedKeyManager("type.googleapis.com/google.crypto.tink.JwtEcdsaPrivateKey"))
+        .isNotNull();
   }
 }

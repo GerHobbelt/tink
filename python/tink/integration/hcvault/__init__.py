@@ -1,4 +1,4 @@
-# Copyright 2020 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,10 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""HashiCorp Vault KMS integration package."""
 
-"""Hashicorp Vault KMS integration package."""
+try:
+  # pylint: disable=g-import-not-at-top
+  from tink.integration.hcvault import _hcvault_kms_aead
+except ImportError as import_error:
+  raise ImportError(
+      'Error importing the Tink HashiCorp Vault KMS module; did you forget to'
+      ' install the `tink[hcvault]` extras?'
+  ) from import_error
 
-from tink.integration.hcvault import _hcvault_kms_client
-from tink.integration.hcvault._hcvault_kms_client import create_aead
-
-create_aead = _hcvault_kms_client.create_aead
+new_aead = _hcvault_kms_aead.new_aead

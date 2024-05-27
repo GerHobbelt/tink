@@ -16,20 +16,34 @@
 
 #include "tink/jwt/internal/jwt_mac_wrapper.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "google/protobuf/struct.pb.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tink/cleartext_keyset_handle.h"
+#include "tink/config/global_registry.h"
 #include "tink/jwt/internal/json_util.h"
 #include "tink/jwt/internal/jwt_format.h"
 #include "tink/jwt/internal/jwt_hmac_key_manager.h"
+#include "tink/jwt/internal/jwt_mac_internal.h"
+#include "tink/jwt/jwt_mac.h"
+#include "tink/jwt/jwt_validator.h"
+#include "tink/jwt/raw_jwt.h"
+#include "tink/jwt/verified_jwt.h"
 #include "tink/keyset_manager.h"
 #include "tink/primitive_set.h"
+#include "tink/registry.h"
 #include "tink/util/status.h"
+#include "tink/util/statusor.h"
 #include "tink/util/test_matchers.h"
 #include "tink/util/test_util.h"
 #include "proto/jwt_hmac.pb.h"
@@ -109,7 +123,8 @@ TEST_F(JwtMacWrapperTest, CannotWrapPrimitivesFromNonRawOrTinkKeys) {
   KeyTemplate tink_key_template = createTemplate(OutputPrefixType::LEGACY);
 
   util::StatusOr<std::unique_ptr<KeysetHandle>> keyset_handle =
-      KeysetHandle::GenerateNew(tink_key_template);
+      KeysetHandle::GenerateNew(tink_key_template,
+                                KeyGenConfigGlobalRegistry());
   EXPECT_THAT(keyset_handle, IsOk());
 
   EXPECT_FALSE((*keyset_handle)
@@ -121,7 +136,7 @@ TEST_F(JwtMacWrapperTest, CannotWrapPrimitivesFromNonRawOrTinkKeys) {
 TEST_F(JwtMacWrapperTest, GenerateRawComputeVerifySuccess) {
   KeyTemplate key_template = createTemplate(OutputPrefixType::RAW);
   util::StatusOr<std::unique_ptr<KeysetHandle>> keyset_handle =
-      KeysetHandle::GenerateNew(key_template);
+      KeysetHandle::GenerateNew(key_template, KeyGenConfigGlobalRegistry());
   EXPECT_THAT(keyset_handle, IsOk());
   util::StatusOr<std::unique_ptr<JwtMac>> jwt_mac =
       (*keyset_handle)
@@ -175,7 +190,7 @@ TEST_F(JwtMacWrapperTest, GenerateRawComputeVerifySuccess) {
 TEST_F(JwtMacWrapperTest, GenerateTinkComputeVerifySuccess) {
   KeyTemplate key_template = createTemplate(OutputPrefixType::TINK);
   util::StatusOr<std::unique_ptr<KeysetHandle>> keyset_handle =
-      KeysetHandle::GenerateNew(key_template);
+      KeysetHandle::GenerateNew(key_template, KeyGenConfigGlobalRegistry());
   EXPECT_THAT(keyset_handle, IsOk());
   util::StatusOr<std::unique_ptr<JwtMac>> jwt_mac =
       (*keyset_handle)

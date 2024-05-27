@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tink/internal/key_status_util.h"
 #include "tink/key_status.h"
 #include "tink/util/statusor.h"
@@ -138,6 +139,8 @@ class MonitoringClient {
 };
 
 // Interface for a factory class that creates monitoring clients.
+//
+// Implementations of this interface should be thread-safe.
 class MonitoringClientFactory {
  public:
   virtual ~MonitoringClientFactory() = default;

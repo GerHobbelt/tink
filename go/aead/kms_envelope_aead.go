@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package aead
 
@@ -90,6 +88,9 @@ func (a *KMSEnvelopeAEAD) Encrypt(pt, aad []byte) ([]byte, error) {
 	encryptedDEK, err := a.remote.Encrypt(dek, []byte{})
 	if err != nil {
 		return nil, err
+	}
+	if len(encryptedDEK) == 0 {
+		return nil, errors.New("encrypted dek is empty")
 	}
 	p, err := registry.Primitive(a.dekTemplate.TypeUrl, dek)
 	if err != nil {

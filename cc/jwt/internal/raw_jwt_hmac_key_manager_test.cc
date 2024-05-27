@@ -22,6 +22,9 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "tink/config/global_registry.h"
 #include "tink/core/key_manager_impl.h"
 #include "tink/keyset_handle.h"
 #include "tink/mac.h"
@@ -33,6 +36,7 @@
 #include "tink/util/statusor.h"
 #include "tink/util/test_matchers.h"
 #include "proto/jwt_hmac.pb.h"
+#include "proto/tink.pb.h"
 
 namespace crypto {
 namespace tink {
@@ -225,7 +229,8 @@ TEST(RawJwtHmacKeyManagerTest, GetPrimitiveFromNewKeysetHandle) {
   key_template.set_output_prefix_type(OutputPrefixType::RAW);
   key_format.SerializeToString(key_template.mutable_value());
 
-  auto handle_result = KeysetHandle::GenerateNew(key_template);
+  auto handle_result =
+      KeysetHandle::GenerateNew(key_template, KeyGenConfigGlobalRegistry());
   ASSERT_TRUE(handle_result.ok()) << handle_result.status();
   std::unique_ptr<KeysetHandle> handle = std::move(handle_result.value());
 

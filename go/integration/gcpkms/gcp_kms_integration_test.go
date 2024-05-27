@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package gcpkms_test
 
@@ -35,7 +33,7 @@ const (
 )
 
 var (
-	credFile = "tink_go/testdata/gcp/credential.json"
+	credFile = "testdata/gcp/credential.json"
 )
 
 func init() {
@@ -49,9 +47,13 @@ func TestGetAeadWithEnvelopeAead(t *testing.T) {
 	if !ok {
 		t.Skip("TEST_SRCDIR not set")
 	}
+	workspaceDir, ok := os.LookupEnv("TEST_WORKSPACE")
+	if !ok {
+		t.Skip("TEST_WORKSPACE not set")
+	}
 	ctx := context.Background()
 	gcpClient, err := gcpkms.NewClientWithOptions(
-		ctx, keyURI, option.WithCredentialsFile(filepath.Join(srcDir, credFile)))
+		ctx, keyURI, option.WithCredentialsFile(filepath.Join(srcDir, workspaceDir, credFile)))
 	if err != nil {
 		t.Fatalf("gcpkms.NewClientWithOptions() err = %q, want nil", err)
 	}
@@ -83,5 +85,59 @@ func TestGetAeadWithEnvelopeAead(t *testing.T) {
 	_, err = a.Decrypt(ciphertext, []byte("invalid associatedData"))
 	if err == nil {
 		t.Error("a.Decrypt(ciphertext, []byte(\"invalid associatedData\")) err = nil, want error")
+	}
+}
+
+func TestAead(t *testing.T) {
+	srcDir, ok := os.LookupEnv("TEST_SRCDIR")
+	if !ok {
+		t.Skip("TEST_SRCDIR not set")
+	}
+	workspaceDir, ok := os.LookupEnv("TEST_WORKSPACE")
+	if !ok {
+		t.Skip("TEST_WORKSPACE not set")
+	}
+	ctx := context.Background()
+	gcpClient, err := gcpkms.NewClientWithOptions(
+		ctx, keyURI, option.WithCredentialsFile(filepath.Join(srcDir, workspaceDir, credFile)))
+	if err != nil {
+		t.Fatalf("gcpkms.NewClientWithOptions() err = %q, want nil", err)
+	}
+	aead, err := gcpClient.GetAEAD(keyURI)
+	if err != nil {
+		t.Fatalf("gcpClient.GetAEAD(keyURI) err = %q, want nil", err)
+	}
+
+	testcases := []struct {
+		name           string
+		plaintext      []byte
+		associatedData []byte
+	}{
+		{
+			name:           "empty_plaintext",
+			plaintext:      []byte(""),
+			associatedData: []byte("authenticated data"),
+		},
+		{
+			name:           "empty_associated_data",
+			plaintext:      []byte("plaintext"),
+			associatedData: []byte(""),
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			ciphertext, err := aead.Encrypt(tc.plaintext, tc.associatedData)
+			if err != nil {
+				t.Fatalf("aead.Encrypt(plaintext, associatedData) err = %q, want nil", err)
+			}
+			gotPlaintext, err := aead.Decrypt(ciphertext, tc.associatedData)
+			if err != nil {
+				t.Fatalf("aead.Decrypt(ciphertext, associatedData) err = %q, want nil", err)
+			}
+			if !bytes.Equal(gotPlaintext, tc.plaintext) {
+				t.Errorf("aead.Decrypt() = %q, want %q", gotPlaintext, tc.plaintext)
+			}
+		})
 	}
 }

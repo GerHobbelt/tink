@@ -21,15 +21,21 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/status/status.h"
+#include "absl/types/optional.h"
 #include "tink/aead/aes_gcm_key.h"
 #include "tink/aead/aes_gcm_parameters.h"
 #include "tink/insecure_secret_key_access.h"
 #include "tink/internal/mutable_serialization_registry.h"
 #include "tink/internal/proto_key_serialization.h"
 #include "tink/internal/proto_parameters_serialization.h"
+#include "tink/internal/serialization.h"
+#include "tink/key.h"
+#include "tink/parameters.h"
 #include "tink/partial_key_access.h"
 #include "tink/restricted_data.h"
 #include "tink/subtle/random.h"
+#include "tink/util/statusor.h"
 #include "tink/util/test_matchers.h"
 #include "proto/aes_gcm.pb.h"
 #include "proto/tink.pb.h"
@@ -426,10 +432,9 @@ TEST_P(AesGcmProtoSerializationTest, SerializeKey) {
   EXPECT_THAT(proto_serialization->IdRequirement(), Eq(test_case.id));
 
   google::crypto::tink::AesGcmKey proto_key;
-  // OSS proto library complains if input is not converted to a string.
-  ASSERT_THAT(proto_key.ParseFromString(std::string(
+  ASSERT_THAT(proto_key.ParseFromString(
                   proto_serialization->SerializedKeyProto().GetSecret(
-                      InsecureSecretKeyAccess::Get()))),
+                      InsecureSecretKeyAccess::Get())),
               IsTrue());
   EXPECT_THAT(proto_key.key_value().size(), Eq(test_case.key_size));
 }

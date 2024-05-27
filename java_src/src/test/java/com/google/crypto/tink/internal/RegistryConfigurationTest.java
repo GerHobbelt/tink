@@ -24,7 +24,6 @@ import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.InsecureSecretKeyAccess;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.Mac;
-import com.google.crypto.tink.PrimitiveSet;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.aead.AesEaxKey;
 import com.google.crypto.tink.aead.AesEaxParameters;
@@ -160,8 +159,8 @@ public class RegistryConfigurationTest {
         RegistryConfiguration.get()
             .wrap(
                 PrimitiveSet.newBuilder(Mac.class)
-                    .addPrimaryFullPrimitiveAndOptionalPrimitive(
-                        LegacyFullMac.create(legacyProtoRawKey), null, rawKeysetKey)
+                    .addPrimaryFullPrimitive(
+                        LegacyFullMac.create(legacyProtoRawKey), legacyProtoRawKey, rawKeysetKey)
                     .build(),
                 Mac.class);
 

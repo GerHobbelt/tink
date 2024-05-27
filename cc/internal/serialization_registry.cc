@@ -19,10 +19,12 @@
 #include <memory>
 #include <string>
 #include <typeinfo>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/optional.h"
 #include "tink/internal/key_parser.h"
 #include "tink/internal/key_serializer.h"
 #include "tink/internal/parameters_parser.h"
@@ -32,6 +34,7 @@
 #include "tink/internal/serializer_index.h"
 #include "tink/key.h"
 #include "tink/parameters.h"
+#include "tink/secret_key_access_token.h"
 #include "tink/util/status.h"
 #include "tink/util/statusor.h"
 
@@ -100,9 +103,10 @@ util::Status SerializationRegistry::Builder::RegisterKeySerializer(
   return util::OkStatus();
 }
 
-SerializationRegistry SerializationRegistry::Builder::Build() {
-  return SerializationRegistry(parameters_parsers_, parameters_serializers_,
-                               key_parsers_, key_serializers_);
+SerializationRegistry SerializationRegistry::Builder::Build() && {
+  return SerializationRegistry(
+      std::move(parameters_parsers_), std::move(parameters_serializers_),
+      std::move(key_parsers_), std::move(key_serializers_));
 }
 
 util::StatusOr<std::unique_ptr<Parameters>>

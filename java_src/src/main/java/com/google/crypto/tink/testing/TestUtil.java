@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc.
+// Copyright 2017 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,14 +24,11 @@ import static org.junit.Assert.assertTrue;
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.InsecureSecretKeyAccess;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.PrimitiveSet;
-import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.TinkProtoKeysetFormat;
 import com.google.crypto.tink.aead.AeadConfig;
 import com.google.crypto.tink.daead.DeterministicAeadConfig;
 import com.google.crypto.tink.internal.KeyTemplateProtoConverter;
 import com.google.crypto.tink.mac.MacConfig;
-import com.google.crypto.tink.monitoring.MonitoringAnnotations;
 import com.google.crypto.tink.prf.PrfConfig;
 import com.google.crypto.tink.proto.AesCtrHmacAeadKey;
 import com.google.crypto.tink.proto.AesCtrHmacStreamingKey;
@@ -94,7 +91,6 @@ import java.security.spec.ECPoint;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import javax.annotation.Nullable;
 import javax.crypto.Cipher;
 
 /** Test helpers. */
@@ -110,24 +106,6 @@ public final class TestUtil {
     }
   }
 
-  // This GCP KMS CryptoKey is restricted to the service account in {@code SERVICE_ACCOUNT_FILE}.
-  public static final String GCP_KMS_TEST_KEY_URI =
-      String.format(
-          "gcp-kms://projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s",
-          "tink-test-infrastructure", "global", "unit-and-integration-testing", "aead-key");
-
-  // This is a credential of a service account that is granted access to
-  // {@code RESTRICTED_CRYPTO_KEY_URI}.
-  public static final String SERVICE_ACCOUNT_FILE = "testdata/gcp/credential.json";
-
-  // This AWS KMS CryptoKey is restricted to Google use only and {@code AWS_CREDS}.
-  public static final String AWS_KMS_TEST_KEY_URI =
-      "aws-kms://arn:aws:kms:us-east-2:235739564943:key/3ee50705-5a82-4f5b-9753-05c4f473922f";
-
-  // This is a credential for the AWS service account with granted access to
-  // {@code AWS_KMS_TEST_KEY_URI}.
-  public static final String AWS_CREDS = "testdata/aws/credentials.cred";
-
   /** A dummy Aead-implementation that just throws exception. */
   public static class DummyAead implements Aead {
     public DummyAead() {}
@@ -141,35 +119,6 @@ public final class TestUtil {
     public byte[] decrypt(byte[] ciphertext, byte[] aad) throws GeneralSecurityException {
       throw new GeneralSecurityException("dummy");
     }
-  }
-
-  /** @return a {@code PrimitiveSet} from a {@code KeySet} */
-  public static <P> PrimitiveSet<P> createPrimitiveSet(Keyset keyset, Class<P> inputClass)
-      throws GeneralSecurityException {
-    return createPrimitiveSetWithAnnotations(keyset, null, inputClass);
-  }
-
-  /**
-   * @return a {@code PrimitiveSet} from a {@code KeySet}
-   */
-  public static <P> PrimitiveSet<P> createPrimitiveSetWithAnnotations(
-      Keyset keyset, @Nullable MonitoringAnnotations annotations, Class<P> inputClass)
-      throws GeneralSecurityException {
-    PrimitiveSet.Builder<P> builder = PrimitiveSet.newBuilder(inputClass);
-    if (annotations != null) {
-      builder.setAnnotations(annotations);
-    }
-    for (Keyset.Key key : keyset.getKeyList()) {
-      if (key.getStatus() == KeyStatusType.ENABLED) {
-        P primitive = Registry.getPrimitive(key.getKeyData(), inputClass);
-        if (key.getKeyId() == keyset.getPrimaryKeyId()) {
-          builder.addPrimaryPrimitive(primitive, key);
-        } else {
-          builder.addPrimitive(primitive, key);
-        }
-      }
-    }
-    return builder.build();
   }
 
   /**

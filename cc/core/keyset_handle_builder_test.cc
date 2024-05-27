@@ -16,33 +16,48 @@
 
 #include "tink/keyset_handle_builder.h"
 
+#include <cstdint>
 #include <memory>
-#include <ostream>
 #include <set>
-#include <sstream>
 #include <string>
 #include <utility>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "tink/aead.h"
+#include "tink/aead/aes_gcm_parameters.h"
+#include "tink/config/global_registry.h"
 #include "tink/config/tink_config.h"
+#include "tink/core/key_type_manager.h"
+#include "tink/core/template_util.h"
+#include "tink/input_stream.h"
 #include "tink/insecure_secret_key_access.h"
 #include "tink/internal/legacy_proto_key.h"
 #include "tink/internal/legacy_proto_parameters.h"
 #include "tink/internal/proto_key_serialization.h"
 #include "tink/internal/proto_parameters_serialization.h"
 #include "tink/key_status.h"
+#include "tink/keyset_handle.h"
+#include "tink/mac.h"
 #include "tink/mac/aes_cmac_key.h"
 #include "tink/mac/aes_cmac_parameters.h"
 #include "tink/mac/mac_key_templates.h"
 #include "tink/partial_key_access.h"
+#include "tink/primitive_set.h"
+#include "tink/primitive_wrapper.h"
+#include "tink/registry.h"
+#include "tink/restricted_data.h"
 #include "tink/subtle/random.h"
 #include "tink/util/status.h"
+#include "tink/util/statusor.h"
 #include "tink/util/test_matchers.h"
 #include "tink/util/test_util.h"
 #include "proto/aes_cmac.pb.h"
+#include "proto/aes_gcm.pb.h"
 #include "proto/tink.pb.h"
 
 namespace crypto {
@@ -54,11 +69,14 @@ using ::crypto::tink::test::IsOk;
 using ::crypto::tink::test::IsOkAndHolds;
 using ::crypto::tink::test::StatusIs;
 using ::google::crypto::tink::AesCmacParams;
+using ::google::crypto::tink::AesGcmKey;
+using ::google::crypto::tink::AesGcmKeyFormat;
 using ::google::crypto::tink::KeyData;
 using ::google::crypto::tink::Keyset;
 using ::google::crypto::tink::KeyStatusType;
 using ::google::crypto::tink::KeyTemplate;
 using ::google::crypto::tink::OutputPrefixType;
+using ::testing::_;
 using ::testing::Eq;
 using ::testing::IsFalse;
 using ::testing::IsTrue;
@@ -599,6 +617,45 @@ TEST_F(KeysetHandleBuilderTest, CreateBuilderEntryFromKey) {
   ASSERT_THAT(handle.status(), IsOk());
 }
 
+TEST_F(KeysetHandleBuilderTest,
+       MergeTwoKeysetsWithTheSameIdButNoIdRequirementWorks) {
+  util::StatusOr<AesCmacParameters> params = AesCmacParameters::Create(
+      /*key_size_in_bytes=*/32, /*cryptographic_tag_size_in_bytes=*/16,
+      AesCmacParameters::Variant::kNoPrefix);
+  ASSERT_THAT(params, IsOk());
+
+  KeysetHandleBuilder::Entry entry1 =
+      KeysetHandleBuilder::Entry::CreateFromParams(
+          absl::make_unique<AesCmacParameters>(std::move(*params)),
+          KeyStatus::kEnabled, /*is_primary=*/true);
+  entry1.SetFixedId(123);
+  util::StatusOr<KeysetHandle> handle1 =
+      KeysetHandleBuilder().AddEntry(std::move(entry1)).Build();
+  ASSERT_THAT(handle1.status(), IsOk());
+
+  KeysetHandleBuilder::Entry entry2 =
+      KeysetHandleBuilder::Entry::CreateFromParams(
+          absl::make_unique<AesCmacParameters>(std::move(*params)),
+          KeyStatus::kEnabled, /*is_primary=*/true);
+  entry2.SetFixedId(123);
+  util::StatusOr<KeysetHandle> handle2 =
+      KeysetHandleBuilder().AddEntry(std::move(entry2)).Build();
+  ASSERT_THAT(handle2.status(), IsOk());
+
+  // handle1 and handle2 each contain one key with the same ID, but no ID
+  // requirement. We can add them to a new keyset because they will get new,
+  // random and distinct IDs.
+  util::StatusOr<KeysetHandle> handle12 =
+      KeysetHandleBuilder()
+          .AddEntry(KeysetHandleBuilder::Entry::CreateFromKey(
+              (*handle1)[0].GetKey(), KeyStatus::kEnabled, /*is_primary=*/true))
+          .AddEntry(KeysetHandleBuilder::Entry::CreateFromKey(
+              (*handle2)[0].GetKey(), KeyStatus::kEnabled,
+              /*is_primary=*/false))
+          .Build();
+  ASSERT_THAT(handle12.status(), IsOk());
+}
+
 TEST_F(KeysetHandleBuilderTest, CreateBuilderEntryFromCopyableKey) {
   Keyset keyset;
   Keyset::Key key;
@@ -838,6 +895,118 @@ TEST_F(KeysetHandleBuilderTest, UsePrimitivesFromSplitKeyset) {
   ASSERT_THAT(mac.status(), IsOk());
   EXPECT_THAT((*mac)->VerifyMac(*tag0, "some input"), IsOk());
   EXPECT_THAT((*mac)->VerifyMac(*tag1, "some other input"), IsOk());
+}
+
+class MockAeadPrimitiveWrapper : public PrimitiveWrapper<Aead, Aead> {
+ public:
+  MOCK_METHOD(util::StatusOr<std::unique_ptr<Aead>>, Wrap,
+              (std::unique_ptr<PrimitiveSet<Aead>> primitive_set),
+              (const override));
+};
+
+class FakeAeadKeyManager
+    : public KeyTypeManager<AesGcmKey, AesGcmKeyFormat, List<Aead>> {
+ public:
+  class AeadFactory : public PrimitiveFactory<Aead> {
+   public:
+    explicit AeadFactory(absl::string_view key_type) : key_type_(key_type) {}
+
+    util::StatusOr<std::unique_ptr<Aead>> Create(
+        const AesGcmKey& key) const override {
+      return {absl::make_unique<test::DummyAead>(key_type_)};
+    }
+
+   private:
+    const std::string key_type_;
+  };
+
+  explicit FakeAeadKeyManager(absl::string_view key_type)
+      : KeyTypeManager(absl::make_unique<AeadFactory>(key_type)),
+        key_type_(key_type) {}
+
+  google::crypto::tink::KeyData::KeyMaterialType key_material_type()
+      const override {
+    return google::crypto::tink::KeyData::SYMMETRIC;
+  }
+
+  uint32_t get_version() const override { return 0; }
+
+  const std::string& get_key_type() const override { return key_type_; }
+
+  crypto::tink::util::Status ValidateKey(const AesGcmKey& key) const override {
+    return util::OkStatus();
+  }
+
+  crypto::tink::util::Status ValidateKeyFormat(
+      const AesGcmKeyFormat& key_format) const override {
+    return util::OkStatus();
+  }
+
+  crypto::tink::util::StatusOr<AesGcmKey> CreateKey(
+      const AesGcmKeyFormat& key_format) const override {
+    return AesGcmKey();
+  }
+
+  crypto::tink::util::StatusOr<AesGcmKey> DeriveKey(
+      const AesGcmKeyFormat& key_format,
+      InputStream* input_stream) const override {
+    return AesGcmKey();
+  }
+
+ private:
+  const std::string key_type_;
+};
+
+TEST_F(KeysetHandleBuilderTest, BuildWithAnnotations) {
+  const absl::flat_hash_map<std::string, std::string> kAnnotations = {
+      {"key1", "value1"}, {"key2", "value2"}};
+  util::StatusOr<AesGcmParameters> aes_128_gcm =
+      AesGcmParameters::Builder()
+          .SetKeySizeInBytes(16)
+          .SetIvSizeInBytes(12)
+          .SetTagSizeInBytes(16)
+          .SetVariant(AesGcmParameters::Variant::kTink)
+          .Build();
+  ASSERT_THAT(aes_128_gcm, IsOk());
+
+  util::StatusOr<KeysetHandle> keyset_handle =
+      KeysetHandleBuilder()
+          .AddEntry(KeysetHandleBuilder::Entry::CreateFromCopyableParams(
+              *aes_128_gcm, crypto::tink::KeyStatus::kEnabled,
+              /*is_primary=*/true))
+          .SetMonitoringAnnotations(kAnnotations)
+          .Build();
+  ASSERT_THAT(keyset_handle, IsOk());
+
+  // In order to validate annotations are set correctly, we need acceess to the
+  // generated primitive set, which is populated by KeysetWrapperImpl and passed
+  // to the primitive wrapper. We thus register a mock primitive wrapper for
+  // Aead so that we can copy the annotations and later check them.
+  auto primitive_wrapper = absl::make_unique<MockAeadPrimitiveWrapper>();
+  absl::flat_hash_map<std::string, std::string> generated_annotations;
+  EXPECT_CALL(*primitive_wrapper, Wrap(_))
+      .WillOnce(
+          [&generated_annotations](
+              std::unique_ptr<PrimitiveSet<Aead>> generated_primitive_set) {
+            generated_annotations = generated_primitive_set->get_annotations();
+            std::unique_ptr<Aead> aead = absl::make_unique<test::DummyAead>("");
+            return aead;
+          });
+  Registry::Reset();
+  ASSERT_THAT(Registry::RegisterPrimitiveWrapper(std::move(primitive_wrapper)),
+              IsOk());
+  ASSERT_THAT(Registry::RegisterKeyTypeManager(
+                  absl::make_unique<FakeAeadKeyManager>(
+                      "type.googleapis.com/google.crypto.tink.AesGcmKey"),
+                  /*new_key_allowed=*/true),
+              IsOk());
+
+  ASSERT_THAT(
+      keyset_handle->GetPrimitive<crypto::tink::Aead>(ConfigGlobalRegistry()),
+      IsOk());
+  EXPECT_EQ(generated_annotations, kAnnotations);
+  // This is needed to cleanup mocks.
+  Registry::Reset();
 }
 
 }  // namespace

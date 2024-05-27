@@ -35,6 +35,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tink/aead/aes_ctr_hmac_aead_key_manager.h"
 #include "tink/aead/aes_gcm_key_manager.h"
 #include "tink/aead/xchacha20_poly1305_key_manager.h"
@@ -51,6 +52,7 @@
 #include "tink/util/statusor.h"
 #include "proto/aes_ctr.pb.h"
 #include "proto/aes_ctr_hmac_aead.pb.h"
+#include "proto/aes_gcm.pb.h"
 #include "proto/aes_siv.pb.h"
 #include "proto/common.pb.h"
 #include "proto/ecdsa.pb.h"
@@ -77,7 +79,7 @@ std::string ReadTestFile(absl::string_view filename) {
   std::string full_filename = absl::StrCat(test::TmpDir(), "/", filename);
   std::ifstream input_stream(full_filename, std::ios::binary);
   if (!input_stream) {
-    std::clog << "Cannot open file " << full_filename << std::endl;
+    std::clog << "Cannot open file " << full_filename << '\n';
     exit(1);
   }
   std::stringstream buffer;

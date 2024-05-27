@@ -24,6 +24,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
+#include "absl/types/optional.h"
 #include "tink/insecure_secret_key_access.h"
 #include "tink/internal/key_parser.h"
 #include "tink/internal/key_serializer.h"
@@ -57,7 +58,7 @@ TEST(SerializationRegistryTest, ParseParameters) {
   ASSERT_THAT(builder.RegisterParametersParser(&parser1), IsOk());
   ASSERT_THAT(builder.RegisterParametersParser(&parser2), IsOk());
 
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = std::move(builder).Build();
 
   util::StatusOr<std::unique_ptr<Parameters>> no_id_params =
       registry.ParseParameters(NoIdSerialization());
@@ -75,8 +76,7 @@ TEST(SerializationRegistryTest, ParseParameters) {
 }
 
 TEST(SerializationRegistryTest, ParseParametersWithoutRegistration) {
-  SerializationRegistry::Builder builder;
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = SerializationRegistry::Builder().Build();
 
   ASSERT_THAT(registry.ParseParameters(NoIdSerialization()).status(),
               StatusIs(absl::StatusCode::kNotFound));
@@ -113,7 +113,7 @@ TEST(SerializationRegistryTest, SerializeParameters) {
   ASSERT_THAT(builder.RegisterParametersSerializer(&serializer1), IsOk());
   ASSERT_THAT(builder.RegisterParametersSerializer(&serializer2), IsOk());
 
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = std::move(builder).Build();
 
   util::StatusOr<std::unique_ptr<Serialization>> serialization1 =
       registry.SerializeParameters<NoIdSerialization>(NoIdParams());
@@ -127,8 +127,7 @@ TEST(SerializationRegistryTest, SerializeParameters) {
 }
 
 TEST(SerializationRegistryTest, SerializeParametersWithoutRegistration) {
-  SerializationRegistry::Builder builder;
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = SerializationRegistry::Builder().Build();
 
   ASSERT_THAT(
       registry.SerializeParameters<NoIdSerialization>(NoIdParams()).status(),
@@ -164,7 +163,7 @@ TEST(SerializationRegistryTest, ParseKey) {
   ASSERT_THAT(builder.RegisterKeyParser(&parser1), IsOk());
   ASSERT_THAT(builder.RegisterKeyParser(&parser2), IsOk());
 
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = std::move(builder).Build();
 
   util::StatusOr<std::unique_ptr<Key>> no_id_key =
       registry.ParseKey(NoIdSerialization(), InsecureSecretKeyAccess::Get());
@@ -185,7 +184,7 @@ TEST(SerializationRegistryTest, ParseKeyNoSecretAccess) {
   KeyParserImpl<NoIdSerialization, NoIdKey> parser(kNoIdTypeUrl, ParseNoIdKey);
   ASSERT_THAT(builder.RegisterKeyParser(&parser), IsOk());
 
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = std::move(builder).Build();
 
   util::StatusOr<std::unique_ptr<Key>> no_id_public_key =
       registry.ParseKey(NoIdSerialization(), absl::nullopt);
@@ -195,8 +194,7 @@ TEST(SerializationRegistryTest, ParseKeyNoSecretAccess) {
 }
 
 TEST(SerializationRegistryTest, ParseKeyWithoutRegistration) {
-  SerializationRegistry::Builder builder;
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = SerializationRegistry::Builder().Build();
 
   ASSERT_THAT(
       registry.ParseKey(NoIdSerialization(), InsecureSecretKeyAccess::Get())
@@ -229,7 +227,7 @@ TEST(SerializationRegistryTest, SerializeKey) {
   ASSERT_THAT(builder.RegisterKeySerializer(&serializer1), IsOk());
   ASSERT_THAT(builder.RegisterKeySerializer(&serializer2), IsOk());
 
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = std::move(builder).Build();
 
   util::StatusOr<std::unique_ptr<Serialization>> serialization1 =
       registry.SerializeKey<NoIdSerialization>(NoIdKey(),
@@ -249,7 +247,7 @@ TEST(SerializationRegistryTest, SerializeKeyNoSecretAccess) {
   KeySerializerImpl<NoIdKey, NoIdSerialization> serializer(SerializeNoIdKey);
   ASSERT_THAT(builder.RegisterKeySerializer(&serializer), IsOk());
 
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = std::move(builder).Build();
 
   util::StatusOr<std::unique_ptr<Serialization>> serialization =
       registry.SerializeKey<NoIdSerialization>(NoIdKey(),
@@ -260,7 +258,7 @@ TEST(SerializationRegistryTest, SerializeKeyNoSecretAccess) {
 
 TEST(SerializationRegistryTest, SerializeKeyWithoutRegistration) {
   SerializationRegistry::Builder builder;
-  SerializationRegistry registry = builder.Build();
+  SerializationRegistry registry = std::move(builder).Build();
 
   ASSERT_THAT(registry
                   .SerializeKey<NoIdSerialization>(
@@ -296,7 +294,7 @@ TEST(SerializationRegistryTest, BuiltFromAnotherRegistry) {
   ASSERT_THAT(builder1.RegisterParametersParser(&parser1), IsOk());
   ASSERT_THAT(builder1.RegisterParametersSerializer(&serializer1), IsOk());
 
-  SerializationRegistry registry1 = builder1.Build();
+  SerializationRegistry registry1 = std::move(builder1).Build();
   SerializationRegistry::Builder builder2(registry1);
 
   KeyParserImpl<NoIdSerialization, NoIdKey> parser2(kNoIdTypeUrl, ParseNoIdKey);
@@ -304,7 +302,7 @@ TEST(SerializationRegistryTest, BuiltFromAnotherRegistry) {
   ASSERT_THAT(builder2.RegisterKeyParser(&parser2), IsOk());
   ASSERT_THAT(builder2.RegisterKeySerializer(&serializer2), IsOk());
 
-  SerializationRegistry registry2 = builder2.Build();
+  SerializationRegistry registry2 = std::move(builder2).Build();
 
   util::StatusOr<std::unique_ptr<Parameters>> params =
       registry2.ParseParameters(NoIdSerialization());
@@ -343,7 +341,7 @@ TEST(SerializationRegistryTest, RegistryCopy) {
   ASSERT_THAT(builder.RegisterKeyParser(&parser2), IsOk());
   ASSERT_THAT(builder.RegisterKeySerializer(&serializer2), IsOk());
 
-  SerializationRegistry registry1 = builder.Build();
+  SerializationRegistry registry1 = std::move(builder).Build();
   SerializationRegistry registry2 = registry1;
 
   util::StatusOr<std::unique_ptr<Parameters>> params =
@@ -383,7 +381,7 @@ TEST(SerializationRegistryTest, RegistryMove) {
   ASSERT_THAT(builder.RegisterKeyParser(&parser2), IsOk());
   ASSERT_THAT(builder.RegisterKeySerializer(&serializer2), IsOk());
 
-  SerializationRegistry registry1 = builder.Build();
+  SerializationRegistry registry1 = std::move(builder).Build();
   SerializationRegistry registry2 = std::move(registry1);
 
   util::StatusOr<std::unique_ptr<Parameters>> params =
