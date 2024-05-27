@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 // Package kmsaead provides a keymanager for KmsAeadKey that may only be used in tests.
 //
@@ -35,7 +33,7 @@ const kmsAEADTypeURL = "type.googleapis.com/google.crypto.tink.KmsAeadKey"
 
 type keyManager struct{}
 
-func (km *keyManager) Primitive(protoSerializedKey []byte) (interface{}, error) {
+func (km *keyManager) Primitive(protoSerializedKey []byte) (any, error) {
 	if len(protoSerializedKey) == 0 {
 		return nil, errors.New("kmsaead.keyManager: invalid key")
 	}

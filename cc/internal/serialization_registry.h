@@ -22,6 +22,7 @@
 #include <string>
 #include <typeindex>
 #include <typeinfo>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -36,6 +37,7 @@
 #include "tink/internal/serializer_index.h"
 #include "tink/key.h"
 #include "tink/parameters.h"
+#include "tink/secret_key_access_token.h"
 #include "tink/util/status.h"
 #include "tink/util/statusor.h"
 
@@ -74,19 +76,19 @@ class SerializationRegistry {
     util::Status RegisterKeySerializer(KeySerializer* serializer);
 
     // Creates serialization registry from this builder.
-    SerializationRegistry Build();
+    SerializationRegistry Build() &&;
 
    private:
     Builder(const absl::flat_hash_map<ParserIndex, ParametersParser*>&
                 parameters_parsers,
             const absl::flat_hash_map<SerializerIndex, ParametersSerializer*>&
                 parameters_serializers,
-            const absl::flat_hash_map<ParserIndex, KeyParser*> key_parsers,
+            absl::flat_hash_map<ParserIndex, KeyParser*> key_parsers,
             const absl::flat_hash_map<SerializerIndex, KeySerializer*>
                 key_serializers)
         : parameters_parsers_(parameters_parsers),
           parameters_serializers_(parameters_serializers),
-          key_parsers_(key_parsers),
+          key_parsers_(std::move(key_parsers)),
           key_serializers_(key_serializers) {}
 
     absl::flat_hash_map<ParserIndex, ParametersParser*> parameters_parsers_;
@@ -150,17 +152,17 @@ class SerializationRegistry {
 
  private:
   SerializationRegistry(
-      const absl::flat_hash_map<ParserIndex, ParametersParser*>&
+      absl::flat_hash_map<ParserIndex, ParametersParser*>
           parameters_parsers,
-      const absl::flat_hash_map<SerializerIndex, ParametersSerializer*>&
+      absl::flat_hash_map<SerializerIndex, ParametersSerializer*>
           parameters_serializers,
-      const absl::flat_hash_map<ParserIndex, KeyParser*> key_parsers,
-      const absl::flat_hash_map<SerializerIndex, KeySerializer*>
+      absl::flat_hash_map<ParserIndex, KeyParser*> key_parsers,
+      absl::flat_hash_map<SerializerIndex, KeySerializer*>
           key_serializers)
-      : parameters_parsers_(parameters_parsers),
-        parameters_serializers_(parameters_serializers),
-        key_parsers_(key_parsers),
-        key_serializers_(key_serializers) {}
+      : parameters_parsers_(std::move(parameters_parsers)),
+        parameters_serializers_(std::move(parameters_serializers)),
+        key_parsers_(std::move(key_parsers)),
+        key_serializers_(std::move(key_serializers)) {}
 
   absl::flat_hash_map<ParserIndex, ParametersParser*> parameters_parsers_;
   absl::flat_hash_map<SerializerIndex, ParametersSerializer*>

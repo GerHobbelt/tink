@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package prf
 
@@ -46,7 +44,7 @@ type hkdfprfKeyManager struct{}
 var _ registry.KeyManager = (*hkdfprfKeyManager)(nil)
 
 // Primitive constructs a HKDF instance for the given serialized HKDFKey.
-func (km *hkdfprfKeyManager) Primitive(serializedKey []byte) (interface{}, error) {
+func (km *hkdfprfKeyManager) Primitive(serializedKey []byte) (any, error) {
 	if len(serializedKey) == 0 {
 		return nil, errInvalidHKDFPRFKey
 	}
@@ -57,8 +55,8 @@ func (km *hkdfprfKeyManager) Primitive(serializedKey []byte) (interface{}, error
 	if err := km.validateKey(key); err != nil {
 		return nil, err
 	}
-	hash := commonpb.HashType_name[int32(key.Params.Hash)]
-	hkdf, err := subtle.NewHKDFPRF(hash, key.KeyValue, key.Params.Salt)
+	hash := commonpb.HashType_name[int32(key.GetParams().GetHash())]
+	hkdf, err := subtle.NewHKDFPRF(hash, key.GetKeyValue(), key.GetParams().GetSalt())
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +75,10 @@ func (km *hkdfprfKeyManager) NewKey(serializedKeyFormat []byte) (proto.Message, 
 	if err := km.validateKeyFormat(keyFormat); err != nil {
 		return nil, fmt.Errorf("hkdf_prf_key_manager: invalid key format: %s", err)
 	}
-	keyValue := random.GetRandomBytes(keyFormat.KeySize)
+	keyValue := random.GetRandomBytes(keyFormat.GetKeySize())
 	return &hkdfpb.HkdfPrfKey{
 		Version:  hkdfprfKeyVersion,
-		Params:   keyFormat.Params,
+		Params:   keyFormat.GetParams(),
 		KeyValue: keyValue,
 	}, nil
 }
@@ -142,7 +140,7 @@ func (km *hkdfprfKeyManager) DeriveKey(serializedKeyFormat []byte, pseudorandomn
 
 	return &hkdfpb.HkdfPrfKey{
 		Version:  hkdfprfKeyVersion,
-		Params:   keyFormat.Params,
+		Params:   keyFormat.GetParams(),
 		KeyValue: keyValue,
 	}, nil
 }
@@ -150,20 +148,16 @@ func (km *hkdfprfKeyManager) DeriveKey(serializedKeyFormat []byte, pseudorandomn
 // validateKey validates the given HKDFPRFKey. It only validates the version of the
 // key because other parameters will be validated in primitive construction.
 func (km *hkdfprfKeyManager) validateKey(key *hkdfpb.HkdfPrfKey) error {
-	err := keyset.ValidateKeyVersion(key.Version, hkdfprfKeyVersion)
-	if err != nil {
+	if err := keyset.ValidateKeyVersion(key.GetVersion(), hkdfprfKeyVersion); err != nil {
 		return fmt.Errorf("hkdf_prf_key_manager: invalid version: %s", err)
 	}
-	keySize := uint32(len(key.KeyValue))
-	hash := commonpb.HashType_name[int32(key.Params.Hash)]
-	return subtle.ValidateHKDFPRFParams(hash, keySize, key.Params.Salt)
+	keySize := uint32(len(key.GetKeyValue()))
+	hash := commonpb.HashType_name[int32(key.GetParams().GetHash())]
+	return subtle.ValidateHKDFPRFParams(hash, keySize, key.GetParams().GetSalt())
 }
 
 // validateKeyFormat validates the given HKDFKeyFormat
 func (km *hkdfprfKeyManager) validateKeyFormat(format *hkdfpb.HkdfPrfKeyFormat) error {
-	if format.Params == nil {
-		return fmt.Errorf("null HKDF params")
-	}
-	hash := commonpb.HashType_name[int32(format.Params.Hash)]
-	return subtle.ValidateHKDFPRFParams(hash, format.KeySize, format.Params.Salt)
+	hash := commonpb.HashType_name[int32(format.GetParams().GetHash())]
+	return subtle.ValidateHKDFPRFParams(hash, format.GetKeySize(), format.GetParams().GetSalt())
 }

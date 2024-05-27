@@ -1,4 +1,4 @@
-# Copyright 2019 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,85 +11,99 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for tink.python.tink.integration.vaultkms_aead."""
+"""Integration tests for Tink Python's HashiCorp Vault KMS integration."""
 
-import hvac
+import base64
+import os
 
 from absl.testing import absltest
+import hvac
 
 import tink
 from tink import aead
-from tink.aead import _kms_aead_key_manager
 from tink.integration import hcvault
-from tink.integration.hcvault import _hcvault_kms_client
-from tink.testing import helper
 
 
-TOKEN = "hvs.LPUqFLiJZXO3Q8kNtCawP33i" # Your auth token
+_VAULT_TOKEN = os.getenv('VAULT_TOKEN', '')  # Your auth token
+_VAULT_ADDR = os.getenv('VAULT_ADDR', '')
 
-BAD_TOKEN = "notavalidtoken"
+_BAD_TOKEN = 'notavalidtoken'
 
-#KEY_URI = ('hcvault://hcvault.corp.com:8200/transit/keys/key-1') # Replace this with your vault URI
-KEY_URI = ('http://10.10.18.215:8200/transit/keys/key-1') # Replace this with your vault URI
-
-GCP_KEY_URI = ('gcp-kms://projects/tink-test-infrastructure/locations/global/'
-               'keyRings/unit-and-integration-testing/cryptoKeys/aead-key')
-
-CLIENT = None
-BAD_CLIENT = None
+# Replace this with your vault URI
+_KEY_PATH = 'transit/keys/key-1'
 
 
 def setUpModule():
   aead.register()
-  global CLIENT
-  global BAD_CLIENT
-  CLIENT = hvac.Client(url=KEY_URI, token=TOKEN, verify=False)
-  BAD_CLIENT = hvac.Client(url=KEY_URI, token=BAD_TOKEN, verify=False)
+
+
+def _corrupt(value: bytes, i: int) -> bytes:
+  """Corrupts a byte in `value` at a given index `i`."""
+  assert i >= 0 and i < len(value)
+  tmp_value = list(value)
+  tmp_value[i] ^= 2
+  return bytes(tmp_value)
+
 
 class HcVaultAeadTest(absltest.TestCase):
 
-  def tearDown(self):
-    super().tearDown()
-    #_kms_aead_key_manager.reset_kms_clients()
+  def setUp(self):
+    super().setUp()
+    self.client = hvac.Client(url=_VAULT_ADDR, token=_VAULT_TOKEN, verify=False)
 
   def test_encrypt_decrypt(self):
-    vaultaead = hcvault.create_aead(KEY_URI, CLIENT)
+    vaultaead = hcvault.new_aead(_KEY_PATH, self.client)
 
-    plaintext = b'hello'
-    associated_data = b'world'
-    ciphertext = vaultaead.encrypt(plaintext, associated_data)
-    self.assertEqual(plaintext, vaultaead.decrypt(ciphertext, associated_data))
-
-    plaintext = b'hello'
-    ciphertext = vaultaead.encrypt(plaintext, b'')
-    self.assertEqual(plaintext, vaultaead.decrypt(ciphertext, b''))
+    plaintext = bytes(i for i in range(256))
+    ciphertext = vaultaead.encrypt(plaintext, associated_data=b'')
+    self.assertEqual(
+        plaintext, vaultaead.decrypt(ciphertext, associated_data=b'')
+    )
 
   def test_corrupted_ciphertext(self):
-    vaultaead = hcvault.create_aead(KEY_URI, CLIENT)
+    vaultaead = hcvault.new_aead(_KEY_PATH, self.client)
 
     plaintext = b'helloworld'
     ciphertext = vaultaead.encrypt(plaintext, b'')
     self.assertEqual(plaintext, vaultaead.decrypt(ciphertext, b''))
 
-    # Corrupt each byte once and check that decryption fails
-    for byte_idx in [b for b in range(len(ciphertext))]:
-      tmp_ciphertext = list(ciphertext)
-      tmp_ciphertext[byte_idx] ^= 2
-      corrupted_ciphertext = bytes(tmp_ciphertext)
+    # The returned ciphertext is of the form:
+    #           vault:v{N}:Base64(IV+Ciphertext)
+    vault, version, iv_and_ciphertext = ciphertext.decode().split(':')
+    # Corrupt vault.
+    for i in range(len(vault)):
+      corrupted_vault = _corrupt(vault.encode(), i)
       with self.assertRaises(tink.TinkError):
-        vaultaead.decrypt(corrupted_ciphertext, b'')
+        vaultaead.decrypt(
+            f'{corrupted_vault}:{version}:{iv_and_ciphertext}'.encode(), b''
+        )
 
-  def test_encrypt_with_bad_uri(self):
-    with self.assertRaises(tink.TinkError):
-      hcvault.create_aead(GCP_KEY_URI, CLIENT)
+    # Corrupt the version.
+    for i in range(len(version)):
+      corrupted_version = _corrupt(version.encode(), i)
+      with self.assertRaises(tink.TinkError):
+        vaultaead.decrypt(
+            f'{vault}:{corrupted_version}:{iv_and_ciphertext}'.encode(), b''
+        )
+
+    # Corrupt the ciphertext.
+    # In this case we corrupt the decoded string, then encode back to Base64.
+    iv_and_ciphertext = base64.b64decode(iv_and_ciphertext.encode())
+    for i in range(len(iv_and_ciphertext)):
+      corrupted_iv_and_ciphertext = base64.b64encode(
+          _corrupt(iv_and_ciphertext, i)
+      )
+      with self.assertRaises(tink.TinkError):
+        vaultaead.decrypt(
+            f'{vault}:{version}:{corrupted_iv_and_ciphertext}', b''
+        )
 
   def test_encrypt_with_bad_client(self):
+    bad_client = hvac.Client(url=_VAULT_ADDR, token=_BAD_TOKEN, verify=False)
+    vaultaead = hcvault.new_aead(_KEY_PATH, bad_client)
     with self.assertRaises(tink.TinkError):
-      vaultaead = hcvault.create_aead(KEY_URI, BAD_CLIENT)
+      vaultaead.encrypt(plaintext=b'hello', associated_data=b'')
 
-      plaintext = b'hello'
-      associated_data = b'world'
-      vaultaead.encrypt(plaintext, associated_data)
 
 if __name__ == '__main__':
   absltest.main()

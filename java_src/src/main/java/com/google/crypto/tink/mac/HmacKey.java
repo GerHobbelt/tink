@@ -18,24 +18,17 @@ package com.google.crypto.tink.mac;
 
 import com.google.crypto.tink.AccessesPartialKey;
 import com.google.crypto.tink.Key;
-import com.google.crypto.tink.annotations.Alpha;
+import com.google.crypto.tink.internal.OutputPrefixUtil;
 import com.google.crypto.tink.util.Bytes;
 import com.google.crypto.tink.util.SecretBytes;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.Immutable;
 import com.google.errorprone.annotations.RestrictedApi;
-import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.util.Objects;
 import javax.annotation.Nullable;
 
-/**
- * Represents a key computing HMAC.
- *
- * <p>This API is annotated with Alpha because it is not yet stable and might be changed in the
- * future.
- */
-@Alpha
+/** Represents a key computing HMAC. */
 @Immutable
 public final class HmacKey extends MacKey {
   private final HmacParameters parameters;
@@ -71,14 +64,14 @@ public final class HmacKey extends MacKey {
 
     private Bytes getOutputPrefix() {
       if (parameters.getVariant() == HmacParameters.Variant.NO_PREFIX) {
-        return Bytes.copyFrom(new byte[] {});
+        return OutputPrefixUtil.EMPTY_PREFIX;
       }
       if (parameters.getVariant() == HmacParameters.Variant.LEGACY
           || parameters.getVariant() == HmacParameters.Variant.CRUNCHY) {
-        return Bytes.copyFrom(ByteBuffer.allocate(5).put((byte) 0).putInt(idRequirement).array());
+        return OutputPrefixUtil.getLegacyOutputPrefix(idRequirement);
       }
       if (parameters.getVariant() == HmacParameters.Variant.TINK) {
-        return Bytes.copyFrom(ByteBuffer.allocate(5).put((byte) 1).putInt(idRequirement).array());
+        return OutputPrefixUtil.getTinkOutputPrefix(idRequirement);
       }
       throw new IllegalStateException("Unknown HmacParameters.Variant: " + parameters.getVariant());
     }

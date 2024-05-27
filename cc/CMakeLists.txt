@@ -134,6 +134,7 @@ tink_cc_library(
     tink::util::buffer
     tink::util::errors
     tink::util::protobuf_helper
+    tink::util::secret_proto
     tink::util::status
     tink::util::statusor
     tink::util::validation
@@ -178,6 +179,7 @@ tink_cc_library(
     output_stream_with_result.h
   DEPS
     tink::core::output_stream
+    absl::status
     tink::util::status
     tink::util::statusor
 )
@@ -323,7 +325,6 @@ tink_cc_library(
     absl::memory
     absl::status
     absl::strings
-    tink::util::errors
     tink::util::protobuf_helper
     tink::util::status
     tink::util::statusor
@@ -342,8 +343,6 @@ tink_cc_library(
     absl::strings
     rapidjson
     tink::util::enums
-    tink::util::errors
-    tink::util::protobuf_helper
     tink::util::status
     tink::util::statusor
     tink::proto::tink_cc_proto
@@ -374,7 +373,9 @@ tink_cc_library(
     crypto_format.h
   DEPS
     absl::status
+    absl::string_view
     tink::util::errors
+    tink::util::status
     tink::util::statusor
     tink::proto::tink_cc_proto
 )
@@ -390,8 +391,10 @@ tink_cc_library(
     absl::flat_hash_map
     absl::memory
     absl::status
+    absl::string_view
     absl::synchronization
     tink::util::errors
+    tink::util::status
     tink::util::statusor
     tink::proto::tink_cc_proto
 )
@@ -410,10 +413,13 @@ tink_cc_library(
   SRCS
     registry.h
   DEPS
+    tink::core::key_manager
+    tink::core::primitive_set
     absl::strings
     tink::internal::registry_impl
     tink::util::status
     tink::util::statusor
+    tink::proto::tink_cc_proto
 )
 
 # Generate TINK_VERSION_H from version.h.templ. TINK_VERSION_LABEL is
@@ -446,6 +452,7 @@ tink_cc_library(
     tink::core::primitive_set
     tink::core::registry
     tink::core::restricted_data
+    tink::core::secret_key_access_token
     absl::core_headers
     absl::flat_hash_map
     absl::check
@@ -467,6 +474,8 @@ tink_cc_library(
     tink::internal::util
     tink::util::errors
     tink::util::keyset_util
+    tink::util::secret_data
+    tink::util::secret_proto
     tink::util::status
     tink::util::statusor
     tink::util::validation
@@ -483,12 +492,18 @@ tink_cc_library(
     tink::core::key_status
     tink::core::keyset_handle
     tink::core::parameters
+    absl::flat_hash_map
     absl::check
+    absl::memory
     absl::status
     absl::strings
+    absl::str_format
     absl::optional
     tink::internal::keyset_handle_builder_entry
     tink::subtle::random
+    tink::util::secret_proto
+    tink::util::status
+    tink::util::statusor
     tink::proto::tink_cc_proto
 )
 
@@ -500,9 +515,12 @@ tink_cc_library(
   DEPS
     tink::core::keyset_handle
     tink::core::keyset_reader
+    tink::core::keyset_writer
     absl::flat_hash_map
+    absl::memory
     absl::status
     tink::util::errors
+    tink::util::secret_proto
     tink::util::status
     tink::util::statusor
     tink::proto::tink_cc_proto
@@ -538,6 +556,7 @@ tink_cc_library(
     tink::internal::key_gen_configuration_impl
     tink::util::enums
     tink::util::errors
+    tink::util::secret_proto
     tink::util::status
     tink::util::statusor
     tink::proto::tink_cc_proto
@@ -599,13 +618,18 @@ tink_cc_library(
     core/key_manager_impl.h
   DEPS
     tink::core::key_type_manager
+    tink::core::template_util
+    tink::core::input_stream
     tink::core::key_manager
     absl::base
     absl::memory
     absl::status
     absl::strings
     tink::util::constants
+    tink::util::errors
+    tink::util::secret_proto
     tink::util::status
+    tink::util::statusor
     tink::proto::tink_cc_proto
 )
 
@@ -615,6 +639,7 @@ tink_cc_library(
     core/private_key_type_manager.h
   DEPS
     tink::core::key_type_manager
+    tink::core::template_util
     tink::util::statusor
 )
 
@@ -624,9 +649,14 @@ tink_cc_library(
     core/private_key_manager_impl.h
   DEPS
     tink::core::key_manager_impl
+    tink::core::key_type_manager
     tink::core::private_key_type_manager
     tink::core::key_manager
+    absl::memory
     absl::status
+    absl::string_view
+    tink::util::status
+    tink::util::statusor
     tink::util::validation
 )
 
@@ -705,6 +735,7 @@ tink_cc_library(
   DEPS
     tink::core::secret_key_access_token
     absl::check
+    absl::string_view
     crypto
     tink::subtle::random
     tink::util::secret_data
@@ -755,6 +786,14 @@ tink_cc_library(
     tink::util::secret_data
 )
 
+tink_cc_library(
+  NAME ec_point
+  SRCS
+    ec_point.h
+  DEPS
+    tink::core::big_integer
+)
+
 # tests
 
 tink_cc_test(
@@ -774,6 +813,7 @@ tink_cc_test(
   DEPS
     tink::core::binary_keyset_reader
     gmock
+    absl::status
     tink::util::test_util
     tink::proto::tink_cc_proto
 )
@@ -784,7 +824,17 @@ tink_cc_test(
     core/binary_keyset_writer_test.cc
   DEPS
     tink::core::binary_keyset_writer
+    tink::core::cc
+    tink::core::insecure_secret_key_access
+    tink::core::proto_keyset_format
     gmock
+    absl::memory
+    absl::status
+    tink::aead::aead_config
+    tink::config::global_registry
+    tink::util::secret_data
+    tink::util::statusor
+    tink::util::test_matchers
     tink::util::test_util
     tink::proto::tink_cc_proto
 )
@@ -795,8 +845,11 @@ tink_cc_test(
     core/json_keyset_reader_test.cc
   DEPS
     tink::core::json_keyset_reader
+    tink::core::keyset_reader
     gmock
+    absl::status
     absl::strings
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::aes_eax_cc_proto
@@ -812,6 +865,7 @@ tink_cc_test(
     tink::core::json_keyset_reader
     tink::core::json_keyset_writer
     gmock
+    absl::status
     absl::strings
     rapidjson
     tink::util::protobuf_helper
@@ -840,7 +894,10 @@ tink_cc_test(
     tink::core::binary_keyset_reader
     tink::core::cc
     tink::core::cleartext_keyset_handle
+    tink::core::configuration
     tink::core::key_manager_impl
+    tink::core::key_type_manager
+    tink::core::template_util
     tink::core::json_keyset_reader
     tink::core::json_keyset_writer
     tink::core::key_gen_configuration
@@ -849,9 +906,11 @@ tink_cc_test(
     tink::core::primitive_set
     tink::core::primitive_wrapper
     gmock
+    absl::flat_hash_map
     absl::memory
     absl::status
     absl::strings
+    absl::optional
     tink::aead::aead_key_templates
     tink::aead::aead_wrapper
     tink::aead::aes_gcm_key_manager
@@ -859,17 +918,21 @@ tink_cc_test(
     tink::config::global_registry
     tink::config::key_gen_fips_140_2
     tink::config::tink_config
+    tink::internal::configuration_impl
     tink::internal::fips_utils
     tink::internal::key_gen_configuration_impl
     tink::signature::ecdsa_sign_key_manager
     tink::signature::ecdsa_verify_key_manager
     tink::signature::signature_key_templates
+    tink::subtle::random
     tink::util::status
     tink::util::statusor
     tink::util::test_keyset_handle
     tink::util::test_matchers
     tink::util::test_util
+    tink::proto::aes_gcm_cc_proto
     tink::proto::aes_gcm_siv_cc_proto
+    tink::proto::ecdsa_cc_proto
     tink::proto::tink_cc_proto
 )
 
@@ -878,13 +941,27 @@ tink_cc_test(
   SRCS
     core/keyset_handle_builder_test.cc
   DEPS
+    tink::core::aead
+    tink::core::key_type_manager
+    tink::core::template_util
+    tink::core::input_stream
     tink::core::insecure_secret_key_access
     tink::core::key_status
+    tink::core::keyset_handle
     tink::core::keyset_handle_builder
+    tink::core::mac
     tink::core::partial_key_access
+    tink::core::primitive_set
+    tink::core::primitive_wrapper
+    tink::core::registry
+    tink::core::restricted_data
     gmock
+    absl::flat_hash_map
+    absl::memory
     absl::status
     absl::strings
+    tink::aead::aes_gcm_parameters
+    tink::config::global_registry
     tink::config::tink_config
     tink::internal::legacy_proto_key
     tink::internal::legacy_proto_parameters
@@ -895,9 +972,11 @@ tink_cc_test(
     tink::mac::mac_key_templates
     tink::subtle::random
     tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     tink::proto::aes_cmac_cc_proto
+    tink::proto::aes_gcm_cc_proto
     tink::proto::tink_cc_proto
 )
 
@@ -922,6 +1001,7 @@ tink_cc_test(
     tink::core::keyset_handle
     tink::core::keyset_manager
     gmock
+    absl::status
     tink::aead::aead_config
     tink::aead::aes_gcm_key_manager
     tink::util::test_keyset_handle
@@ -938,6 +1018,8 @@ tink_cc_test(
     tink::core::cleartext_keyset_handle
     tink::core::keyset_handle
     gmock
+    absl::status
+    tink::util::status
     tink::util::test_keyset_handle
     tink::util::test_util
     tink::proto::tink_cc_proto
@@ -948,11 +1030,14 @@ tink_cc_test(
   SRCS
     core/primitive_set_test.cc
   DEPS
-    tink::core::cleartext_keyset_handle
     tink::core::crypto_format
     tink::core::mac
     tink::core::primitive_set
     gmock
+    absl::memory
+    absl::status
+    absl::strings
+    absl::string_view
     tink::keyderivation::keyset_deriver
     tink::util::test_matchers
     tink::util::test_util
@@ -992,6 +1077,7 @@ tink_cc_test(
   DEPS
     tink::core::aead
     tink::core::key_type_manager
+    tink::core::template_util
     gmock
     absl::memory
     absl::status
@@ -1031,12 +1117,17 @@ tink_cc_test(
     core/private_key_manager_impl_test.cc
   DEPS
     tink::core::key_manager_impl
+    tink::core::key_type_manager
     tink::core::private_key_manager_impl
     tink::core::private_key_type_manager
+    tink::core::template_util
+    tink::core::key_manager
     tink::core::registry
     gmock
+    absl::memory
     absl::status
-    tink::subtle::subtle
+    tink::subtle::aes_gcm_boringssl
+    tink::subtle::random
     tink::util::status
     tink::util::statusor
     tink::util::test_matchers
@@ -1089,8 +1180,13 @@ tink_cc_library(
     tink::core::cleartext_keyset_handle
     tink::core::keyset_handle
     tink::core::secret_key_access_token
+    absl::status
     absl::strings
     tink::util::secret_data
+    tink::util::secret_proto
+    tink::util::status
+    tink::util::statusor
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_test(
@@ -1099,17 +1195,21 @@ tink_cc_test(
     proto_keyset_format_test.cc
   DEPS
     tink::core::insecure_secret_key_access
+    tink::core::key_status
+    tink::core::keyset_handle
     tink::core::keyset_handle_builder
     tink::core::mac
     tink::core::proto_keyset_format
     gmock
     absl::strings
+    tink::config::global_registry
     tink::config::tink_config
     tink::internal::legacy_proto_parameters
     tink::internal::proto_parameters_serialization
     tink::mac::mac_key_templates
     tink::signature::signature_key_templates
     tink::util::secret_data
+    tink::util::statusor
     tink::util::test_matchers
 )
 
@@ -1134,4 +1234,15 @@ tink_cc_test(
     gmock
     absl::strings
     absl::string_view
+)
+
+tink_cc_test(
+  NAME ec_point_test
+  SRCS
+    core/ec_point_test.cc
+  DEPS
+    tink::core::big_integer
+    tink::core::ec_point
+    gmock
+    tink::subtle::random
 )

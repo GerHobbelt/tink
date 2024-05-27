@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 // Package stubkeymanager defines key managers for testing primitives.
 package stubkeymanager
@@ -29,7 +27,7 @@ import (
 // StubKeyManager is a key manager for testing.
 type StubKeyManager struct {
 	URL     string
-	Prim    interface{}
+	Prim    any
 	Key     proto.Message
 	KeyData *tinkpb.KeyData
 }
@@ -37,7 +35,7 @@ type StubKeyManager struct {
 var _ (registry.KeyManager) = (*StubKeyManager)(nil)
 
 // Primitive returns the stub primitive.
-func (km *StubKeyManager) Primitive(serializedKey []byte) (interface{}, error) {
+func (km *StubKeyManager) Primitive(serializedKey []byte) (any, error) {
 	return km.Prim, nil
 }
 

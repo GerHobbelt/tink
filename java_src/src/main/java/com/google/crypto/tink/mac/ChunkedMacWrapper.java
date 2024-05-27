@@ -17,10 +17,11 @@
 package com.google.crypto.tink.mac;
 
 import com.google.crypto.tink.CryptoFormat;
-import com.google.crypto.tink.PrimitiveSet;
-import com.google.crypto.tink.PrimitiveSet.Entry;
 import com.google.crypto.tink.PrimitiveWrapper;
-import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveSet;
+import com.google.crypto.tink.internal.PrimitiveSet.Entry;
 import com.google.errorprone.annotations.Immutable;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
@@ -153,6 +154,16 @@ public class ChunkedMacWrapper implements PrimitiveWrapper<ChunkedMac, ChunkedMa
   }
 
   static void register() throws GeneralSecurityException {
-    Registry.registerPrimitiveWrapper(WRAPPER);
+    MutablePrimitiveRegistry.globalInstance().registerPrimitiveWrapper(WRAPPER);
+  }
+
+  /**
+   * registerToInternalPrimitiveRegistry is a non-public method (it takes an argument of an
+   * internal-only type) registering an instance of {@code MacWrapper} to the provided {@code
+   * PrimitiveRegistry#Builder}.
+   */
+  public static void registerToInternalPrimitiveRegistry(
+      PrimitiveRegistry.Builder primitiveRegistryBuilder) throws GeneralSecurityException {
+    primitiveRegistryBuilder.registerPrimitiveWrapper(WRAPPER);
   }
 }

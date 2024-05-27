@@ -27,6 +27,7 @@ tink_cc_library(
     errors.h
   DEPS
     tink::util::status
+    absl::status
     absl::str_format
 )
 
@@ -193,11 +194,13 @@ tink_cc_library(
     tink::aead::xchacha20_poly1305_key_manager
     tink::daead::aes_siv_key_manager
     tink::internal::ec_util
+    tink::keyderivation::keyset_deriver
     tink::subtle::common_enums
     tink::subtle::random
     tink::subtle::mac::stateful_mac
     tink::proto::aes_ctr_cc_proto
     tink::proto::aes_ctr_hmac_aead_cc_proto
+    tink::proto::aes_gcm_cc_proto
     tink::proto::aes_siv_cc_proto
     tink::proto::common_cc_proto
     tink::proto::ecdsa_cc_proto
@@ -218,6 +221,7 @@ tink_cc_library(
     tink::util::statusor
     gmock
     absl::status
+    absl::strings
   TESTONLY
 )
 
@@ -235,6 +239,7 @@ tink_cc_library(
     test_keyset_handle.cc
     test_keyset_handle.h
   DEPS
+    tink::util::secret_proto
     absl::memory
     tink::core::keyset_handle
     tink::proto::tink_cc_proto
@@ -301,6 +306,8 @@ tink_cc_test(
     gmock
     tink::subtle::common_enums
     tink::proto::common_cc_proto
+    tink::proto::ecdsa_cc_proto
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_test(
@@ -310,6 +317,7 @@ tink_cc_test(
   DEPS
     tink::util::file_input_stream
     tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     gmock
@@ -328,10 +336,13 @@ tink_cc_test(
     file_output_stream_test.cc
   DEPS
     tink::util::file_output_stream
+    tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     gmock
     absl::memory
+    absl::status
     absl::strings
     tink::internal::test_file_util
     tink::subtle::random
@@ -346,12 +357,15 @@ tink_cc_test(
   DEPS
     tink::util::buffer
     tink::util::file_random_access_stream
+    tink::util::status
+    tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     gmock
     absl::memory
     absl::status
     absl::strings
+    tink::core::random_access_stream
     tink::internal::test_file_util
     tink::subtle::random
   TAGS
@@ -364,6 +378,7 @@ tink_cc_test(
     istream_input_stream_test.cc
   DEPS
     tink::util::istream_input_stream
+    tink::util::status
     tink::util::test_util
     gmock
     absl::memory
@@ -380,6 +395,7 @@ tink_cc_test(
     ostream_output_stream_test.cc
   DEPS
     tink::util::ostream_output_stream
+    tink::util::status
     tink::util::test_util
     gmock
     absl::memory
@@ -395,11 +411,15 @@ tink_cc_test(
   DEPS
     tink::util::buffer
     tink::util::ostream_output_stream
+    tink::util::status
     tink::util::statusor
     tink::util::test_matchers
     tink::util::test_util
     gmock
+    absl::status
     absl::strings
+    absl::cord
+    tink::core::keyset_handle
     tink::core::output_stream
     tink::core::random_access_stream
     tink::internal::test_random_access_stream
@@ -418,6 +438,7 @@ tink_cc_test(
     tink::util::validation
     gmock
     absl::status
+    tink::proto::tink_cc_proto
 )
 
 tink_cc_test(
@@ -432,6 +453,7 @@ tink_cc_test(
     tink::util::test_matchers
     gmock
     absl::memory
+    absl::status
 )
 
 tink_cc_library(
@@ -473,6 +495,7 @@ tink_cc_library(
     tink::util::statusor
     protobuf::libprotobuf
     absl::memory
+    absl::status
 )
 
 tink_cc_test(
@@ -480,7 +503,9 @@ tink_cc_test(
   SRCS
     secret_proto_test.cc
   DEPS
+    tink::util::secret_data
     tink::util::secret_proto
+    tink::util::statusor
     protobuf::libprotobuf
     gmock
     absl::memory
@@ -496,6 +521,7 @@ tink_cc_library(
     tink::util::errors
     tink::util::status
     tink::util::statusor
+    absl::memory
     absl::status
     absl::strings
     tink::core::aead
@@ -506,6 +532,8 @@ tink_cc_library(
     tink::core::kms_client
     tink::core::kms_clients
     tink::aead::aead_key_templates
+    tink::config::global_registry
+    tink::proto::tink_cc_proto
   TESTONLY
 )
 
@@ -520,8 +548,12 @@ tink_cc_test(
     tink::util::test_matchers
     tink::util::test_util
     gmock
+    tink::core::aead
+    tink::core::keyset_handle
     tink::aead::aead_config
     tink::aead::aead_key_templates
+    tink::config::global_registry
     tink::proto::kms_aead_cc_proto
     tink::proto::kms_envelope_cc_proto
+    tink::proto::tink_cc_proto
 )

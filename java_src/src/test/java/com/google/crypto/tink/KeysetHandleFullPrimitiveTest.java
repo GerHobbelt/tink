@@ -20,12 +20,13 @@ import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
 
-import com.google.crypto.tink.PrimitiveSet.Entry;
 import com.google.crypto.tink.internal.KeyParser;
 import com.google.crypto.tink.internal.KeySerializer;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.internal.MutableSerializationRegistry;
 import com.google.crypto.tink.internal.PrimitiveConstructor;
+import com.google.crypto.tink.internal.PrimitiveSet;
+import com.google.crypto.tink.internal.PrimitiveSet.Entry;
 import com.google.crypto.tink.internal.ProtoKeySerialization;
 import com.google.crypto.tink.mac.AesCmacKey;
 import com.google.crypto.tink.mac.AesCmacParameters;
@@ -109,7 +110,7 @@ public class KeysetHandleFullPrimitiveTest {
     }
 
     public static void register() throws GeneralSecurityException {
-      Registry.registerPrimitiveWrapper(WRAPPER);
+      MutablePrimitiveRegistry.globalInstance().registerPrimitiveWrapper(WRAPPER);
     }
   }
 
@@ -200,7 +201,7 @@ public class KeysetHandleFullPrimitiveTest {
     }
 
     public static void register() throws GeneralSecurityException {
-      Registry.registerPrimitiveWrapper(WRAPPER);
+      MutablePrimitiveRegistry.globalInstance().registerPrimitiveWrapper(WRAPPER);
     }
   }
 
@@ -238,7 +239,6 @@ public class KeysetHandleFullPrimitiveTest {
     for (List<Entry<SingleTestPrimitive>> list : primitive.getPrimitiveSet().getAll()) {
       for (PrimitiveSet.Entry<SingleTestPrimitive> entry : list) {
         assertThat(entry.getFullPrimitive()).isNotNull();
-        assertThat(entry.getPrimitive()).isNull();
       }
     }
   }
@@ -331,7 +331,6 @@ public class KeysetHandleFullPrimitiveTest {
     for (List<Entry<Mac>> list : primitive.getPrimitiveSet().getAll()) {
       for (PrimitiveSet.Entry<Mac> entry : list) {
         assertThat(entry.getFullPrimitive()).isNotNull();
-        assertThat(entry.getPrimitive()).isNotNull();
       }
     }
   }

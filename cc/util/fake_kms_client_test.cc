@@ -21,15 +21,20 @@
 #include <utility>
 #include <vector>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "tink/aead.h"
 #include "tink/aead/aead_config.h"
 #include "tink/aead/aead_key_templates.h"
+#include "tink/config/global_registry.h"
+#include "tink/keyset_handle.h"
 #include "tink/util/status.h"
 #include "tink/util/statusor.h"
 #include "tink/util/test_matchers.h"
 #include "tink/util/test_util.h"
 #include "proto/kms_aead.pb.h"
 #include "proto/kms_envelope.pb.h"
+#include "proto/tink.pb.h"
 
 using google::crypto::tink::KeyTemplate;
 using google::crypto::tink::KmsAeadKeyFormat;
@@ -146,7 +151,8 @@ TEST_F(FakeKmsClientTest, RegisterAndEncryptDecryptWithKmsAead) {
   EXPECT_THAT(status, IsOk());
 
   KeyTemplate key_template = NewKmsAeadKeyTemplate(key_uri);
-  auto handle_result = KeysetHandle::GenerateNew(key_template);
+  auto handle_result =
+      KeysetHandle::GenerateNew(key_template, KeyGenConfigGlobalRegistry());
   EXPECT_TRUE(handle_result.ok()) << handle_result.status();
   auto aead_result = handle_result.value()->GetPrimitive<crypto::tink::Aead>(
       ConfigGlobalRegistry());
@@ -172,7 +178,8 @@ TEST_F(FakeKmsClientTest, RegisterAndEncryptDecryptWithKmsEnvelopeAead) {
 
   KeyTemplate key_template =
       NewKmsEnvelopeKeyTemplate(key_uri, AeadKeyTemplates::Aes128Gcm());
-  auto handle_result = KeysetHandle::GenerateNew(key_template);
+  auto handle_result =
+      KeysetHandle::GenerateNew(key_template, KeyGenConfigGlobalRegistry());
   EXPECT_TRUE(handle_result.ok()) << handle_result.status();
   auto aead_result = handle_result.value()->GetPrimitive<crypto::tink::Aead>(
       ConfigGlobalRegistry());

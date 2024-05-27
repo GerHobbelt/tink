@@ -17,10 +17,12 @@
 #ifndef TINK_UTIL_SECRET_DATA_H_
 #define TINK_UTIL_SECRET_DATA_H_
 
+#include <cstddef>
+#include <cstdint>  // IWYU pragma: keep
 #include <memory>
 #include <string>
 #include <type_traits>
-#include <vector>
+#include <vector>  // IWYU pragma: keep
 
 #include "absl/strings/string_view.h"
 #include "tink/util/secret_data_internal.h"
@@ -90,7 +92,7 @@ class SecretUniquePtr {
   pointer get() const { return value_.get(); }
   deleter_type& get_deleter() { return value_.get_deleter(); }
   const deleter_type& get_deleter() const { return value_.get_deleter(); }
-  void swap(SecretUniquePtr& other) { value_.swap(other.value_); }
+  void swap(SecretUniquePtr& other) noexcept { value_.swap(other.value_); }
   void reset() { value_.reset(); }
 
   typename std::add_lvalue_reference<T>::type operator*() const {

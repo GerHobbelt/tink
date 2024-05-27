@@ -17,6 +17,7 @@
 package com.google.crypto.tink.jwt;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
 
@@ -27,22 +28,18 @@ import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.TinkProtoKeysetFormat;
-import com.google.crypto.tink.internal.KeyTypeManager;
-import com.google.crypto.tink.proto.JwtHmacAlgorithm;
+import com.google.crypto.tink.internal.KeyManagerRegistry;
 import com.google.crypto.tink.proto.JwtHmacKey;
 import com.google.crypto.tink.proto.JwtHmacKey.CustomKid;
-import com.google.crypto.tink.proto.JwtHmacKeyFormat;
 import com.google.crypto.tink.proto.KeyData;
 import com.google.crypto.tink.proto.Keyset;
 import com.google.crypto.tink.subtle.Base64;
 import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.subtle.PrfHmacJce;
 import com.google.crypto.tink.subtle.PrfMac;
-import com.google.crypto.tink.subtle.Random;
 import com.google.crypto.tink.testing.TestUtil;
 import com.google.crypto.tink.util.SecretBytes;
 import com.google.gson.JsonObject;
-import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import java.security.GeneralSecurityException;
 import java.time.Clock;
@@ -64,13 +61,18 @@ import org.junit.runner.RunWith;
 /** Unit tests for {@link JwtHmacKeyManager}. */
 @RunWith(Theories.class)
 public class JwtHmacKeyManagerTest {
-  private final JwtHmacKeyManager manager = new JwtHmacKeyManager();
-  private final KeyTypeManager.KeyFactory<JwtHmacKeyFormat, JwtHmacKey> factory =
-      manager.keyFactory();
 
   @BeforeClass
   public static void setUp() throws Exception {
     JwtMacConfig.register();
+  }
+
+  @Test
+  public void testKeyManagerRegistered() throws Exception {
+    assertThat(
+            KeyManagerRegistry.globalInstance()
+                .getUntypedKeyManager("type.googleapis.com/google.crypto.tink.JwtHmacKey"))
+        .isNotNull();
   }
 
   @DataPoint public static final String JWT_HS256 = "JWT_HS256";
@@ -78,40 +80,6 @@ public class JwtHmacKeyManagerTest {
   @DataPoint public static final String JWT_HS512 = "JWT_HS512";
   @DataPoint public static final String JWT_HS256_RAW = "JWT_HS256_RAW";
 
-  @Test
-  public void validateKeyFormat_empty() throws Exception {
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.validateKeyFormat(JwtHmacKeyFormat.getDefaultInstance()));
-  }
-
-  private static JwtHmacKeyFormat makeJwtHmacKeyFormat(int keySize, JwtHmacAlgorithm algorithm) {
-    return JwtHmacKeyFormat.newBuilder().setAlgorithm(algorithm).setKeySize(keySize).build();
-  }
-
-  @Test
-  public void validateKeyFormat_hS256() throws Exception {
-    factory.validateKeyFormat(makeJwtHmacKeyFormat(32, JwtHmacAlgorithm.HS256));
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.validateKeyFormat(makeJwtHmacKeyFormat(31, JwtHmacAlgorithm.HS256)));
-  }
-
-  @Test
-  public void validateKeyFormat_hS384() throws Exception {
-    factory.validateKeyFormat(makeJwtHmacKeyFormat(48, JwtHmacAlgorithm.HS384));
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.validateKeyFormat(makeJwtHmacKeyFormat(47, JwtHmacAlgorithm.HS384)));
-  }
-
-  @Test
-  public void validateKeyFormat_hS512() throws Exception {
-    factory.validateKeyFormat(makeJwtHmacKeyFormat(64, JwtHmacAlgorithm.HS512));
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.validateKeyFormat(makeJwtHmacKeyFormat(63, JwtHmacAlgorithm.HS512)));
-  }
 
   @DataPoints("templateNames")
   public static final String[] KEY_TEMPLATES =
@@ -128,68 +96,22 @@ public class JwtHmacKeyManagerTest {
   }
 
   @Test
-  public void createKey_valid() throws Exception {
-    manager.validateKey(factory.createKey(makeJwtHmacKeyFormat(32, JwtHmacAlgorithm.HS256)));
-    manager.validateKey(factory.createKey(makeJwtHmacKeyFormat(48, JwtHmacAlgorithm.HS384)));
-    manager.validateKey(factory.createKey(makeJwtHmacKeyFormat(64, JwtHmacAlgorithm.HS512)));
-  }
-
-  @Test
-  public void createTooShortKey_invalid() throws Exception {
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            manager.validateKey(
-                factory.createKey(makeJwtHmacKeyFormat(31, JwtHmacAlgorithm.HS256))));
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            manager.validateKey(
-                factory.createKey(makeJwtHmacKeyFormat(47, JwtHmacAlgorithm.HS384))));
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            manager.validateKey(
-                factory.createKey(makeJwtHmacKeyFormat(63, JwtHmacAlgorithm.HS512))));
-  }
-
-  @Test
-  public void createKey_checkValues() throws Exception {
-    JwtHmacKeyFormat keyFormat = makeJwtHmacKeyFormat(32, JwtHmacAlgorithm.HS256);
-    JwtHmacKey key = factory.createKey(keyFormat);
-    assertThat(key.getKeyValue()).hasSize(keyFormat.getKeySize());
-    assertThat(key.getAlgorithm()).isEqualTo(keyFormat.getAlgorithm());
-  }
-
-  @Test
   public void createKey_multipleTimes() throws Exception {
-    JwtHmacKeyFormat keyFormat = makeJwtHmacKeyFormat(32, JwtHmacAlgorithm.HS256);
+    JwtHmacParameters parameters =
+        JwtHmacParameters.builder()
+            .setKeySizeBytes(32)
+            .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+            .setAlgorithm(JwtHmacParameters.Algorithm.HS256)
+            .build();
     int numKeys = 100;
     Set<String> keys = new TreeSet<>();
     for (int i = 0; i < numKeys; ++i) {
-      keys.add(Hex.encode(factory.createKey(keyFormat).getKeyValue().toByteArray()));
+      KeysetHandle handle = KeysetHandle.generateNew(parameters);
+      com.google.crypto.tink.jwt.JwtHmacKey jwtHmacKey =
+          (com.google.crypto.tink.jwt.JwtHmacKey) handle.getAt(0).getKey();
+      keys.add(Hex.encode(jwtHmacKey.getKeyBytes().toByteArray(InsecureSecretKeyAccess.get())));
     }
     assertThat(keys).hasSize(numKeys);
-  }
-
-  @Test
-  public void validateKey_wrongVersion_throws() throws Exception {
-    JwtHmacKey validKey = factory.createKey(makeJwtHmacKeyFormat(32, JwtHmacAlgorithm.HS256));
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> manager.validateKey(JwtHmacKey.newBuilder(validKey).setVersion(1).build()));
-  }
-
-  @Test
-  public void validateKey_notValid_throws() throws Exception {
-    JwtHmacKey validKey = factory.createKey(makeJwtHmacKeyFormat(32, JwtHmacAlgorithm.HS256));
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            manager.validateKey(
-                JwtHmacKey.newBuilder(validKey)
-                    .setKeyValue(ByteString.copyFrom(Random.randBytes(31)))
-                    .build()));
   }
 
   @Test
@@ -940,6 +862,44 @@ public class JwtHmacKeyManagerTest {
   }
 
   @Test
+  public void keyWithKid_tokenWithoutKid() throws Exception {
+    KeyTemplate template = KeyTemplates.get("JWT_HS256_RAW");
+    KeysetHandle handleWithoutKid = KeysetHandle.generateNew(template);
+
+    com.google.crypto.tink.jwt.JwtHmacKey key =
+        (com.google.crypto.tink.jwt.JwtHmacKey) handleWithoutKid.getAt(0).getKey();
+
+    JwtHmacParameters newParameters =
+        JwtHmacParameters.builder()
+            .setKeySizeBytes(key.getParameters().getKeySizeBytes())
+            .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+            .setAlgorithm(key.getParameters().getAlgorithm())
+            .build();
+    com.google.crypto.tink.jwt.JwtHmacKey newKey =
+        com.google.crypto.tink.jwt.JwtHmacKey.builder()
+            .setParameters(newParameters)
+            .setIdRequirement(0x22446688)
+            .setKeyBytes(key.getKeyBytes())
+            .build();
+
+    KeysetHandle handleWithTinkKid =
+        KeysetHandle.newBuilder()
+            .addEntry(KeysetHandle.importKey(newKey).withFixedId(0x22446688).makePrimary())
+            .build();
+
+    JwtMac jwtMacWithKid = handleWithTinkKid.getPrimitive(JwtMac.class);
+    JwtMac jwtMacWithoutKid = handleWithoutKid.getPrimitive(JwtMac.class);
+    JwtValidator validator = JwtValidator.newBuilder().allowMissingExpiration().build();
+
+    RawJwt rawToken = RawJwt.newBuilder().setJwtId("jwtId").withoutExpiration().build();
+    String compactWithKid = jwtMacWithoutKid.computeMacAndEncode(rawToken);
+
+    assertThrows(
+        GeneralSecurityException.class,
+        () -> jwtMacWithKid.verifyMacAndDecode(compactWithKid, validator));
+  }
+
+  @Test
   public void macWithTinkKeyAndCustomKid_fails() throws Exception {
     KeyTemplate template = KeyTemplates.get("JWT_HS256");
     KeysetHandle handle = KeysetHandle.generateNew(template);
@@ -972,4 +932,66 @@ public class JwtHmacKeyManagerTest {
             TinkProtoKeysetFormat.parseKeyset(serializeKeysetWithKid, InsecureSecretKeyAccess.get())
                 .getPrimitive(JwtMac.class));
   }
+
+  @Test
+  public void serializeAndDeserialize_works() throws Exception {
+    KeyTemplate template = KeyTemplates.get("JWT_HS256_RAW");
+    KeysetHandle handle = KeysetHandle.generateNew(template);
+    byte[] serialized =
+        TinkProtoKeysetFormat.serializeKeyset(handle, InsecureSecretKeyAccess.get());
+    KeysetHandle parsed =
+        TinkProtoKeysetFormat.parseKeyset(serialized, InsecureSecretKeyAccess.get());
+    assertThat(parsed.equalsKeyset(handle)).isTrue();
+  }
+
+  @Theory
+  public void createKeyWithRejectedParameters_throws(
+      @FromDataPoints("KeyManager rejected") JwtHmacParameters params) throws Exception {
+    assertThrows(GeneralSecurityException.class, () -> KeysetHandle.generateNew(params));
+  }
+
+  @Theory
+  public void createPrimitiveWithRejectedParameters_throws(
+      @FromDataPoints("KeyManager rejected") JwtHmacParameters params) throws Exception {
+    com.google.crypto.tink.jwt.JwtHmacKey key =
+        com.google.crypto.tink.jwt.JwtHmacKey.builder()
+            .setParameters(params)
+            .setKeyBytes(SecretBytes.randomBytes(params.getKeySizeBytes()))
+            .setIdRequirement(123)
+            .build();
+    KeysetHandle handle =
+        KeysetHandle.newBuilder().addEntry(KeysetHandle.importKey(key).makePrimary()).build();
+    assertThrows(GeneralSecurityException.class, () -> handle.getPrimitive(JwtMac.class));
+  }
+
+  private static JwtHmacParameters[] createRejectedParameters() {
+    return exceptionIsBug(
+        () ->
+            new JwtHmacParameters[] {
+              // Key Sizes below the minimum are rejected.
+              JwtHmacParameters.builder()
+                  .setKeySizeBytes(31)
+                  .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                  .setAlgorithm(JwtHmacParameters.Algorithm.HS256)
+                  .build(),
+              JwtHmacParameters.builder()
+                  .setKeySizeBytes(47)
+                  .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                  .setAlgorithm(JwtHmacParameters.Algorithm.HS384)
+                  .build(),
+              JwtHmacParameters.builder()
+                  .setKeySizeBytes(63)
+                  .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                  .setAlgorithm(JwtHmacParameters.Algorithm.HS512)
+                  .build(),
+              JwtHmacParameters.builder()
+                  .setKeySizeBytes(32)
+                  .setKidStrategy(JwtHmacParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
+                  .setAlgorithm(JwtHmacParameters.Algorithm.HS512)
+                  .build(),
+            });
+  }
+
+  @DataPoints("KeyManager rejected")
+  public static final JwtHmacParameters[] RECJECTED_PARAMETERS = createRejectedParameters();
 }

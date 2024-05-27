@@ -18,6 +18,8 @@
 #define TINK_INTERNAL_REGISTRY_IMPL_H_
 
 #include <algorithm>
+#include <atomic>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -58,6 +60,7 @@ class RegistryImpl {
   RegistryImpl() = default;
   RegistryImpl(const RegistryImpl&) = delete;
   RegistryImpl& operator=(const RegistryImpl&) = delete;
+  ~RegistryImpl() { Reset(); }
 
   // Registers the given 'manager' for the key type 'manager->get_key_type()'.
   // Takes ownership of 'manager', which must be non-nullptr. KeyManager is the
@@ -137,10 +140,8 @@ class RegistryImpl {
 
   // Returns a pointer to the registered monitoring factory if any, and nullptr
   // otherwise.
-  crypto::tink::MonitoringClientFactory* GetMonitoringClientFactory() const
-      ABSL_LOCKS_EXCLUDED(monitoring_factory_mutex_) {
-    absl::MutexLock lock(&monitoring_factory_mutex_);
-    return monitoring_factory_.get();
+  crypto::tink::MonitoringClientFactory* GetMonitoringClientFactory() const {
+    return monitoring_factory_.load(std::memory_order_acquire);
   }
 
  private:
@@ -162,9 +163,11 @@ class RegistryImpl {
   // PrimitiveWrapper.
   KeysetWrapperStore keyset_wrapper_store_ ABSL_GUARDED_BY(maps_mutex_);
 
+  // Mutex to protect writes to `monitoring_factory_`.
   mutable absl::Mutex monitoring_factory_mutex_;
-  std::unique_ptr<crypto::tink::MonitoringClientFactory> monitoring_factory_
-      ABSL_GUARDED_BY(monitoring_factory_mutex_);
+  // Owned.
+  std::atomic<crypto::tink::MonitoringClientFactory*> monitoring_factory_{
+      nullptr};
 };
 
 template <class P>
@@ -240,6 +243,7 @@ crypto::tink::util::Status RegistryImpl::RegisterPrimitiveWrapper(
                                    std::move(primitive_getter));
 }
 
+// TODO: b/284059638 - Remove this and upstream functions from the public API.
 template <class P>
 crypto::tink::util::StatusOr<const KeyManager<P>*>
 RegistryImpl::get_key_manager(absl::string_view type_url) const {
@@ -255,11 +259,13 @@ RegistryImpl::get_key_manager(absl::string_view type_url) const {
 template <class P>
 crypto::tink::util::StatusOr<std::unique_ptr<P>> RegistryImpl::GetPrimitive(
     const google::crypto::tink::KeyData& key_data) const {
-  auto key_manager_result = get_key_manager<P>(key_data.type_url());
-  if (key_manager_result.ok()) {
-    return key_manager_result.value()->GetPrimitive(key_data);
+  crypto::tink::util::StatusOr<
+      const crypto::tink::internal::KeyTypeInfoStore::Info*>
+      info = get_key_type_info(key_data.type_url());
+  if (!info.ok()) {
+    return info.status();
   }
-  return key_manager_result.status();
+  return (*info)->GetPrimitive<P>(key_data);
 }
 
 template <class P>

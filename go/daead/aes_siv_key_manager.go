@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package daead
 
@@ -48,7 +46,7 @@ type aesSIVKeyManager struct{}
 var _ registry.KeyManager = (*aesSIVKeyManager)(nil)
 
 // Primitive constructs an AES-SIV for the given serialized AesSivKey.
-func (km *aesSIVKeyManager) Primitive(serializedKey []byte) (interface{}, error) {
+func (km *aesSIVKeyManager) Primitive(serializedKey []byte) (any, error) {
 	if len(serializedKey) == 0 {
 		return nil, errors.New("aes_siv_key_manager: invalid key")
 	}

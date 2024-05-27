@@ -97,7 +97,7 @@ run_py_examples_tests() {
   ## Install Tink and its dependencies via pip for the examples/python tests.
   ./kokoro/testutils/install_tink_via_pip.sh -a "${PWD}/python"
   if [[ "${IS_KOKORO}" == "true" ]]; then
-    local pip_flags=( --require-hashes )
+    local pip_flags=( --require-hashes --no-deps )
     if [[ "${PLATFORM}" == "darwin" ]]; then
       pip_flags+=( --user )
     fi
@@ -147,9 +147,10 @@ main() {
     # Install protoc.
     source ./kokoro/testutils/install_protoc.sh
 
+    # Sourcing required to update callers environment.
+    source ./kokoro/testutils/install_python3.sh
+
     if [[ "${PLATFORM}" == 'linux' ]]; then
-      # Sourcing required to update callers environment.
-      source ./kokoro/testutils/install_python3.sh
       ./kokoro/testutils/upgrade_gcc.sh
     fi
 
@@ -159,7 +160,7 @@ main() {
       : "${XCODE_VERSION:=14.1}"
 
       export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
-      export JAVA_HOME=$(/usr/libexec/java_home -v "1.8.0_292")
+      export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-8-latest/Contents/Home
       export ANDROID_HOME="/usr/local/share/android-sdk"
       export COURSIER_OPTS="-Djava.net.preferIPv6Addresses=true"
 

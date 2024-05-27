@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package signature
 
@@ -44,7 +42,7 @@ var errInvalidED25519SignKeyFormat = errors.New("ed25519_signer_key_manager: inv
 type ed25519SignerKeyManager struct{}
 
 // Primitive creates an ED25519Sign subtle for the given serialized ED25519PrivateKey proto.
-func (km *ed25519SignerKeyManager) Primitive(serializedKey []byte) (interface{}, error) {
+func (km *ed25519SignerKeyManager) Primitive(serializedKey []byte) (any, error) {
 	if len(serializedKey) == 0 {
 		return nil, errInvalidED25519SignKey
 	}

@@ -23,47 +23,53 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tink/binary_keyset_reader.h"
 #include "tink/binary_keyset_writer.h"
 #include "tink/cleartext_keyset_handle.h"
+#include "tink/keyset_handle.h"
+#include "tink/secret_key_access_token.h"
 #include "tink/util/secret_data.h"
+#include "tink/util/secret_proto.h"
+#include "tink/util/status.h"
+#include "tink/util/statusor.h"
+#include "proto/tink.pb.h"
 
 namespace crypto {
 namespace tink {
 
 crypto::tink::util::StatusOr<KeysetHandle> ParseKeysetFromProtoKeysetFormat(
     absl::string_view serialized_keyset, SecretKeyAccessToken token) {
-  crypto::tink::util::StatusOr<std::unique_ptr<crypto::tink::KeysetReader>>
-      keyset_reader = BinaryKeysetReader::New(serialized_keyset);
-  if (!keyset_reader.ok()) {
-    return keyset_reader.status();
+  crypto::tink::util::SecretProto<google::crypto::tink::Keyset> keyset_proto;
+  if (!keyset_proto->ParseFromString(serialized_keyset)) {
+    return util::Status(absl::StatusCode::kInternal, "Failed to parse keyset");
   }
-  crypto::tink::util::StatusOr<std::unique_ptr<KeysetHandle>> result =
-    CleartextKeysetHandle::Read(std::move(*keyset_reader));
-  if (!result.ok()) {
-    return result.status();
+  util::StatusOr<std::vector<std::shared_ptr<const KeysetHandle::Entry>>>
+      entries = KeysetHandle::GetEntriesFromKeyset(*keyset_proto);
+  if (!entries.ok()) {
+    return entries.status();
   }
-  return std::move(**result);
+  if (entries->size() != keyset_proto->key_size()) {
+    return util::Status(absl::StatusCode::kInternal,
+                        "Error converting keyset proto into key entries.");
+  }
+  return KeysetHandle(std::move(keyset_proto), *entries);
 }
 
 crypto::tink::util::StatusOr<util::SecretData>
 SerializeKeysetToProtoKeysetFormat(const KeysetHandle& keyset_handle,
                                    SecretKeyAccessToken token) {
-  std::stringbuf string_buf(std::ios_base::out);
-  crypto::tink::util::StatusOr<std::unique_ptr<BinaryKeysetWriter>>
-      keyset_writer = BinaryKeysetWriter::New(
-          std::make_unique<std::ostream>(&string_buf));
-  if (!keyset_writer.ok()) {
-    return keyset_writer.status();
+  const google::crypto::tink::Keyset& keyset =
+      CleartextKeysetHandle::GetKeyset(keyset_handle);
+  util::SecretData result(keyset.ByteSizeLong());
+  if (!keyset.SerializeToArray(result.data(), result.size())) {
+    return util::Status(absl::StatusCode::kInternal,
+                        "Failed to serialize keyset");
   }
-  crypto::tink::util::Status status =
-      CleartextKeysetHandle::Write(keyset_writer->get(), keyset_handle);
-  if (!status.ok()) {
-    return status;
-  }
-  // TODO(tholenst): directly write into a secret data.
-  return util::SecretDataFromStringView(string_buf.str());
+  return result;
 }
 
 crypto::tink::util::StatusOr<KeysetHandle>

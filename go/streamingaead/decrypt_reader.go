@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package streamingaead
 
@@ -20,7 +18,6 @@ import (
 	"errors"
 	"io"
 
-	"github.com/google/tink/go/core/primitiveset"
 	"github.com/google/tink/go/tink"
 )
 
@@ -49,21 +46,14 @@ func (dr *decryptReader) Read(p []byte) (n int, err error) {
 		return 0, errKeyNotFound
 	}
 
-	// For legacy reasons (Tink always encrypted with non-RAW keys) we use all
-	// primitives, even those which have output_prefix_type != RAW.
-	var allEntries []*primitiveset.Entry
-	for _, entryList := range dr.wrapped.ps.Entries {
-		allEntries = append(allEntries, entryList...)
-	}
-	if err != nil {
-		return 0, err
-	}
-
 	dr.matchAttempted = true
 	ur := &unreader{r: dr.cr}
 
 	// find proper key to decrypt ciphertext
-	for _, e := range allEntries {
+	//
+	// For legacy reasons (Tink always encrypted with non-RAW keys) we use all
+	// primitives, even those which have output_prefix_type != RAW.
+	for _, e := range dr.wrapped.ps.EntriesInKeysetOrder {
 		sa, ok := e.Primitive.(tink.StreamingAEAD)
 		if !ok {
 			continue

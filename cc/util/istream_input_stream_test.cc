@@ -36,6 +36,7 @@
 #include "absl/strings/string_view.h"
 #include "tink/internal/test_file_util.h"
 #include "tink/subtle/random.h"
+#include "tink/util/status.h"
 #include "tink/util/test_util.h"
 
 namespace crypto {
@@ -54,7 +55,7 @@ std::unique_ptr<std::istream> GetTestIstream(absl::string_view filename,
   std::ofstream output (full_filename, std::ofstream::binary);
   if (!output.write(file_contents->data(), size) || output.tellp() != size) {
     std::clog << "Failed to write " << size << " bytes to file "
-              << full_filename << " error: " << errno << std::endl;
+              << full_filename << " error: " << errno << '\n';
 
     exit(1);
   }

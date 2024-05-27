@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package aead
 
@@ -42,7 +40,7 @@ const (
 // AESGCMInsecureIV is an insecure implementation of the AEAD interface that
 // permits the user to set the IV.
 type AESGCMInsecureIV struct {
-	Key       []byte
+	key       []byte
 	prependIV bool
 }
 
@@ -57,7 +55,7 @@ func NewAESGCMInsecureIV(key []byte, prependIV bool) (*AESGCMInsecureIV, error) 
 		return nil, fmt.Errorf("invalid AES key size: %s", err)
 	}
 	return &AESGCMInsecureIV{
-		Key:       key,
+		key:       key,
 		prependIV: prependIV,
 	}, nil
 }
@@ -144,7 +142,7 @@ func (i *AESGCMInsecureIV) Decrypt(iv, ciphertext, associatedData []byte) ([]byt
 // newCipher creates a new AES-GCM cipher using the given key and the crypto
 // library.
 func (i *AESGCMInsecureIV) newCipher() (cipher.AEAD, error) {
-	aesCipher, err := aes.NewCipher(i.Key)
+	aesCipher, err := aes.NewCipher(i.key)
 	if err != nil {
 		return nil, errors.New("failed to initialize cipher")
 	}

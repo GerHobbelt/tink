@@ -18,112 +18,76 @@ package com.google.crypto.tink.aead;
 
 import com.google.crypto.tink.AccessesPartialKey;
 import com.google.crypto.tink.Aead;
+import com.google.crypto.tink.KeyManager;
 import com.google.crypto.tink.KeyTemplate;
-import com.google.crypto.tink.KmsClient;
 import com.google.crypto.tink.KmsClients;
 import com.google.crypto.tink.Parameters;
-import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.aead.internal.LegacyFullAead;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
-import com.google.crypto.tink.internal.KeyTemplateProtoConverter;
-import com.google.crypto.tink.internal.KeyTypeManager;
-import com.google.crypto.tink.internal.PrimitiveFactory;
+import com.google.crypto.tink.internal.KeyManagerRegistry;
+import com.google.crypto.tink.internal.LegacyKeyManagerImpl;
+import com.google.crypto.tink.internal.MutableKeyCreationRegistry;
+import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
-import com.google.crypto.tink.proto.KmsEnvelopeAeadKey;
-import com.google.crypto.tink.proto.KmsEnvelopeAeadKeyFormat;
-import com.google.crypto.tink.subtle.Validators;
-import com.google.protobuf.ByteString;
-import com.google.protobuf.ExtensionRegistryLite;
-import com.google.protobuf.InvalidProtocolBufferException;
 import java.security.GeneralSecurityException;
+import javax.annotation.Nullable;
 
 /**
  * This key manager generates new {@code KmsEnvelopeAeadKey} keys and produces new instances of
  * {@code KmsEnvelopeAead}.
  */
-public class KmsEnvelopeAeadKeyManager extends KeyTypeManager<KmsEnvelopeAeadKey> {
+public class KmsEnvelopeAeadKeyManager {
   private static final String TYPE_URL =
       "type.googleapis.com/google.crypto.tink.KmsEnvelopeAeadKey";
 
-  KmsEnvelopeAeadKeyManager() {
-    super(
-        KmsEnvelopeAeadKey.class,
-        new PrimitiveFactory<Aead, KmsEnvelopeAeadKey>(Aead.class) {
-          @Override
-          public Aead getPrimitive(KmsEnvelopeAeadKey keyProto) throws GeneralSecurityException {
-            String keyUri = keyProto.getParams().getKekUri();
-            KmsClient kmsClient = KmsClients.get(keyUri);
-            Aead remote = kmsClient.getAead(keyUri);
-            return new KmsEnvelopeAead(keyProto.getParams().getDekTemplate(), remote);
-          }
-        });
+  private static final KeyManager<Aead> legacyKeyManager =
+      LegacyKeyManagerImpl.create(
+          getKeyType(),
+          Aead.class,
+          KeyMaterialType.SYMMETRIC,
+          com.google.crypto.tink.proto.KmsEnvelopeAeadKey.parser());
+
+  /**
+   * Creates a "new" key from a parameters.
+   *
+   * <p>While this creates a new Key object, it doesn't actually create a new key. It simply creates
+   * the key object corresponding to this parameters object. Creating a new key would require to
+   * call an API in the KMS, which this method does not do.
+   *
+   * <p>The reason this method exists is that in the past, Tink did not provide an API for the user
+   * to create a key object by themselves. Instead, users had to always create a Key from a key
+   * template (which is now a Parameters object) via {@code KeysetHandle.generateNew(template);}. To
+   * support old usages, we need to register this creator.
+   */
+  @AccessesPartialKey
+  private static LegacyKmsEnvelopeAeadKey newKey(
+      LegacyKmsEnvelopeAeadParameters parameters, @Nullable Integer idRequirement)
+      throws GeneralSecurityException {
+    return LegacyKmsEnvelopeAeadKey.create(parameters, idRequirement);
   }
 
-  @Override
-  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
-    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  @SuppressWarnings("InlineLambdaConstant") // We need a correct Object#equals in registration.
+  private static final MutableKeyCreationRegistry.KeyCreator<LegacyKmsEnvelopeAeadParameters>
+      KEY_CREATOR = KmsEnvelopeAeadKeyManager::newKey;
+
+  @AccessesPartialKey
+  private static Aead create(LegacyKmsEnvelopeAeadKey key) throws GeneralSecurityException {
+    String kekUri = key.getParameters().getKekUri();
+    Aead rawAead =
+        KmsEnvelopeAead.create(
+            key.getParameters().getDekParametersForNewKeys(),
+            KmsClients.get(kekUri).getAead(kekUri));
+    return LegacyFullAead.create(rawAead, key.getOutputPrefix());
   }
 
-  @Override
-  public String getKeyType() {
+  private static final PrimitiveConstructor<LegacyKmsEnvelopeAeadKey, Aead>
+      LEGACY_KMS_ENVELOPE_AEAD_PRIMITIVE_CONSTRUCTOR =
+          PrimitiveConstructor.create(
+              KmsEnvelopeAeadKeyManager::create, LegacyKmsEnvelopeAeadKey.class, Aead.class);
+
+  static String getKeyType() {
     return TYPE_URL;
-  }
-
-  @Override
-  public int getVersion() {
-    return 0;
-  }
-
-  @Override
-  public KeyMaterialType keyMaterialType() {
-    return KeyMaterialType.REMOTE;
-  }
-
-  @Override
-  public void validateKey(KmsEnvelopeAeadKey key) throws GeneralSecurityException {
-    Validators.validateVersion(key.getVersion(), getVersion());
-    if (!KmsEnvelopeAead.isSupportedDekKeyType(key.getParams().getDekTemplate().getTypeUrl())) {
-      throw new GeneralSecurityException(
-          "Unsupported DEK key type: "
-              + key.getParams().getDekTemplate().getTypeUrl()
-              + ". Only Tink AEAD key types are supported.");
-    }
-  }
-
-  @Override
-  public KmsEnvelopeAeadKey parseKey(ByteString byteString) throws InvalidProtocolBufferException {
-    return KmsEnvelopeAeadKey.parseFrom(byteString, ExtensionRegistryLite.getEmptyRegistry());
-  }
-
-  @Override
-  public KeyFactory<KmsEnvelopeAeadKeyFormat, KmsEnvelopeAeadKey> keyFactory() {
-    return new KeyFactory<KmsEnvelopeAeadKeyFormat, KmsEnvelopeAeadKey>(
-        KmsEnvelopeAeadKeyFormat.class) {
-      @Override
-      public void validateKeyFormat(KmsEnvelopeAeadKeyFormat format)
-          throws GeneralSecurityException {
-        if (!KmsEnvelopeAead.isSupportedDekKeyType(format.getDekTemplate().getTypeUrl())) {
-          throw new GeneralSecurityException(
-              "Unsupported DEK key type: "
-                  + format.getDekTemplate().getTypeUrl()
-                  + ". Only Tink AEAD key types are supported.");
-        }
-        if (format.getKekUri().isEmpty() || !format.hasDekTemplate()) {
-          throw new GeneralSecurityException("invalid key format: missing KEK URI or DEK template");
-        }
-      }
-
-      @Override
-      public KmsEnvelopeAeadKeyFormat parseKeyFormat(ByteString byteString)
-          throws InvalidProtocolBufferException {
-        return KmsEnvelopeAeadKeyFormat.parseFrom(
-            byteString, ExtensionRegistryLite.getEmptyRegistry());
-      }
-
-      @Override
-      public KmsEnvelopeAeadKey createKey(KmsEnvelopeAeadKeyFormat format) {
-        return KmsEnvelopeAeadKey.newBuilder().setParams(format).setVersion(getVersion()).build();
-      }
-    };
   }
 
   private static AeadParameters makeRawAesGcm(AesGcmParameters parameters)
@@ -224,12 +188,22 @@ public class KmsEnvelopeAeadKeyManager extends KeyTypeManager<KmsEnvelopeAeadKey
    * key encrypting key (KEK) is pointing to {@code kekUri} and DEK template is {@code dekTemplate}
    * (or a derived version of it).
    *
+   * <p>It requires that a {@code KmsClient} that can handle {@code kekUri} is registered. Avoid
+   * registering it more than once.
+   *
    * <p><b>Note: </b> Unlike other templates, when you call {@link KeysetHandle#generateNew} with
    * this template Tink does not generate new key material, but instead creates a reference to the
    * remote KEK.
    *
-   * <p>The second argument of the passed in template is used ignoring the Variant, and assuming
+   * <p>The second argument of the passed in template is ignoring the Variant, and assuming
    * NO_PREFIX instead.
+   *
+   * <p>It is often not necessary to use this function. Instead of registering a {@code KmsClient},
+   * and creating an {@code Aead} using {@code
+   * KeysetHandle.generateNew(KmsEnvelopeAeadKeyManager.createKeyTemplate(keyUri,
+   * KeyTemplates.get("AES128_GCM"))).getPrimitive(Aead.class)}, create the {@code Aead} directly
+   * using {@code KmsEnvelopeAead.create(PredefinedAeadParameters.AES256_GCM,
+   * kmsClient.getAead(keyUri))}, without registering any {@code KmsClient}.
    */
   @AccessesPartialKey
   public static KeyTemplate createKeyTemplate(String kekUri, KeyTemplate dekTemplate) {
@@ -250,23 +224,17 @@ public class KmsEnvelopeAeadKeyManager extends KeyTypeManager<KmsEnvelopeAeadKey
   }
 
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
-    Registry.registerKeyManager(new KmsEnvelopeAeadKeyManager(), newKeyAllowed);
+    if (!TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS.isCompatible()) {
+      throw new GeneralSecurityException(
+          "Registering KMS Envelope AEAD is not supported in FIPS mode");
+    }
     LegacyKmsEnvelopeAeadProtoSerialization.register();
+    MutableKeyCreationRegistry.globalInstance()
+        .add(KEY_CREATOR, LegacyKmsEnvelopeAeadParameters.class);
+    MutablePrimitiveRegistry.globalInstance()
+        .registerPrimitiveConstructor(LEGACY_KMS_ENVELOPE_AEAD_PRIMITIVE_CONSTRUCTOR);
+    KeyManagerRegistry.globalInstance().registerKeyManager(legacyKeyManager, newKeyAllowed);
   }
 
-  static KmsEnvelopeAeadKeyFormat createKeyFormat(String kekUri, KeyTemplate dekTemplate)
-      throws GeneralSecurityException, InvalidProtocolBufferException {
-    com.google.crypto.tink.proto.KeyTemplate protoDekTemplate =
-        KeyTemplateProtoConverter.toProto(dekTemplate);
-    if (!KmsEnvelopeAead.isSupportedDekKeyType(protoDekTemplate.getTypeUrl())) {
-      throw new IllegalArgumentException(
-          "Unsupported DEK key type: "
-              + protoDekTemplate.getTypeUrl()
-              + ". Only Tink AEAD key types are supported.");
-    }
-    return KmsEnvelopeAeadKeyFormat.newBuilder()
-        .setDekTemplate(protoDekTemplate)
-        .setKekUri(kekUri)
-        .build();
-  }
+  private KmsEnvelopeAeadKeyManager() {}
 }

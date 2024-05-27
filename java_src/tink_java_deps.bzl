@@ -2,9 +2,11 @@
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
+_GRPC_VERSION = "1.59.1"
+
 TINK_MAVEN_ARTIFACTS = [
-    "com.google.protobuf:protobuf-java:3.19.6",
-    "com.google.protobuf:protobuf-javalite:3.19.6",
+    "com.google.protobuf:protobuf-java:3.25.1",
+    "com.google.protobuf:protobuf-javalite:3.25.1",
     "com.amazonaws:aws-java-sdk-core:1.12.182",
     "com.amazonaws:aws-java-sdk-kms:1.12.182",
     "androidx.annotation:annotation:1.5.0",
@@ -12,8 +14,12 @@ TINK_MAVEN_ARTIFACTS = [
     "com.google.auto.service:auto-service:1.0.1",
     "com.google.auto.service:auto-service-annotations:1.0.1",
     "com.google.api-client:google-api-client:2.2.0",
+    "com.google.api:gax:2.36.0",
+    "com.google.api.grpc:grpc-google-cloud-kms-v1:0.124.0",
+    "com.google.api.grpc:proto-google-cloud-kms-v1:0.124.0",
     "com.google.apis:google-api-services-cloudkms:v1-rev20221107-2.0.0",
-    "com.google.auth:google-auth-library-oauth2-http:1.5.3",
+    "com.google.auth:google-auth-library-oauth2-http:1.20.0",
+    "com.google.cloud:google-cloud-kms:2.31.0",
     "com.google.code.findbugs:jsr305:3.0.2",
     "com.google.code.gson:gson:2.10.1",
     "com.google.errorprone:error_prone_annotations:2.18.0",
@@ -21,6 +27,11 @@ TINK_MAVEN_ARTIFACTS = [
     "com.google.http-client:google-http-client-gson:1.43.1",
     "com.google.oauth-client:google-oauth-client:1.34.1",
     "com.google.truth:truth:0.44",
+    "io.github.jopenlibs:vault-java-driver:5.4.0",
+    "io.grpc:grpc-api:%s" % _GRPC_VERSION,
+    "io.grpc:grpc-inprocess:%s" % _GRPC_VERSION,
+    "io.grpc:grpc-stub:%s" % _GRPC_VERSION,
+    "io.grpc:grpc-testing:%s" % _GRPC_VERSION,
     "junit:junit:4.13.2",
     "org.conscrypt:conscrypt-openjdk-uber:2.5.2",
     "org.ow2.asm:asm:7.0",
@@ -37,7 +48,7 @@ def tink_java_deps():
             name = "google_root_pem",
             executable = 0,
             urls = ["https://pki.goog/roots.pem"],
-            sha256 = "9c9b9685ad319b9747c3fe69b46a61c11a0efabdfa09ca6a8b0c3da421036d27",
+            sha256 = "1acf0d4780541758be2c0f998e1e0275232626ed3f8793d8e2fe8e2753750613",
         )
 
     # Basic rules we need to add to bazel.
@@ -62,24 +73,24 @@ def tink_java_deps():
     #   * @com_google_protobuf//:java_toolchain
     # This statement defines the @com_google_protobuf repo.
     if not native.existing_rule("com_google_protobuf"):
-        # Release X.21.9 from 2022-10-26.
+        # Release from Feb 16, 2024.
         http_archive(
             name = "com_google_protobuf",
-            strip_prefix = "protobuf-21.9",
-            urls = ["https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.9.zip"],
-            sha256 = "5babb8571f1cceafe0c18e13ddb3be556e87e12ceea3463d6b0d0064e6cc1ac3",
+            strip_prefix = "protobuf-25.3",
+            urls = ["https://github.com/protocolbuffers/protobuf/archive/refs/tags/v25.3.zip"],
+            sha256 = "5156b22536feaa88cf95503153a6b2cd67cc80f20f1218f154b84a12c288a220",
         )
 
     # -------------------------------------------------------------------------
     # Transitive Maven artifact resolution and publishing rules for Bazel.
     # -------------------------------------------------------------------------
     if not native.existing_rule("rules_jvm_external"):
-        # Release from 2021-11-24
+        # Release from 2023-06-23
         http_archive(
             name = "rules_jvm_external",
-            strip_prefix = "rules_jvm_external-4.2",
-            sha256 = "cd1a77b7b02e8e008439ca76fd34f5b07aecb8c752961f9640dea15e9e5ba1ca",
-            url = "https://github.com/bazelbuild/rules_jvm_external/archive/4.2.zip",
+            strip_prefix = "rules_jvm_external-5.3",
+            url = "https://github.com/bazelbuild/rules_jvm_external/archive/5.3.zip",
+            sha256 = "6cc8444b20307113a62b676846c29ff018402fd4c7097fcd6d0a0fd5f2e86429",
         )
 
     # -------------------------------------------------------------------------

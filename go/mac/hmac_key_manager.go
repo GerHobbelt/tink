@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package mac
 
@@ -42,7 +40,7 @@ var errInvalidHMACKeyFormat = errors.New("hmac_key_manager: invalid key format")
 type hmacKeyManager struct{}
 
 // Primitive constructs a HMAC instance for the given serialized HMACKey.
-func (km *hmacKeyManager) Primitive(serializedKey []byte) (interface{}, error) {
+func (km *hmacKeyManager) Primitive(serializedKey []byte) (any, error) {
 	if len(serializedKey) == 0 {
 		return nil, errInvalidHMACKey
 	}
@@ -53,8 +51,8 @@ func (km *hmacKeyManager) Primitive(serializedKey []byte) (interface{}, error) {
 	if err := km.validateKey(key); err != nil {
 		return nil, err
 	}
-	hash := commonpb.HashType_name[int32(key.Params.Hash)]
-	hmac, err := subtle.NewHMAC(hash, key.KeyValue, key.Params.TagSize)
+	hash := commonpb.HashType_name[int32(key.GetParams().GetHash())]
+	hmac, err := subtle.NewHMAC(hash, key.KeyValue, key.GetParams().GetTagSize())
 	if err != nil {
 		return nil, err
 	}
@@ -150,15 +148,12 @@ func (km *hmacKeyManager) validateKey(key *hmacpb.HmacKey) error {
 		return fmt.Errorf("hmac_key_manager: invalid version: %s", err)
 	}
 	keySize := uint32(len(key.KeyValue))
-	hash := commonpb.HashType_name[int32(key.Params.Hash)]
-	return subtle.ValidateHMACParams(hash, keySize, key.Params.TagSize)
+	hash := commonpb.HashType_name[int32(key.GetParams().GetHash())]
+	return subtle.ValidateHMACParams(hash, keySize, key.GetParams().GetTagSize())
 }
 
 // validateKeyFormat validates the given HMACKeyFormat
 func (km *hmacKeyManager) validateKeyFormat(format *hmacpb.HmacKeyFormat) error {
-	if format.Params == nil {
-		return fmt.Errorf("null HMAC params")
-	}
-	hash := commonpb.HashType_name[int32(format.Params.Hash)]
-	return subtle.ValidateHMACParams(hash, format.KeySize, format.Params.TagSize)
+	hash := commonpb.HashType_name[int32(format.GetParams().GetHash())]
+	return subtle.ValidateHMACParams(hash, format.KeySize, format.GetParams().GetTagSize())
 }

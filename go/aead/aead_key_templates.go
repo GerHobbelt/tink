@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package aead
 
@@ -139,8 +137,10 @@ func XChaCha20Poly1305KeyTemplate() *tinkpb.KeyTemplate {
 //
 // If either uri or dekTemplate contain invalid input, an error is returned.
 //
-// Deprecated: Instead, call kmsClient.GetAEAD to get a remote AEAD, create
-// an envelope AEAD using aead.NewKMSEnvelopeAEAD2.
+// It is often not necessary to use this function. Instead, you can call
+// kmsClient.GetAEAD to get a remote AEAD, and create an envelope AEAD using
+// [NewKMSEnvelopeAEAD2].
+//
 // There is no need to call registry.RegisterKMSClient anymore.
 func CreateKMSEnvelopeAEADKeyTemplate(uri string, dekTemplate *tinkpb.KeyTemplate) (*tinkpb.KeyTemplate, error) {
 	if !isSupporedKMSEnvelopeDEK(dekTemplate.GetTypeUrl()) {

@@ -23,11 +23,16 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tink/internal/keyset_handle_builder_entry.h"
 #include "tink/key.h"
 #include "tink/key_status.h"
 #include "tink/keyset_handle.h"
 #include "tink/parameters.h"
+#include "tink/util/secret_proto.h"
+#include "tink/util/status.h"
+#include "tink/util/statusor.h"
 
 namespace crypto {
 namespace tink {
@@ -117,7 +122,8 @@ class KeysetHandleBuilder {
       return entry_->GetKeyIdStrategy();
     }
 
-    crypto::tink::util::StatusOr<google::crypto::tink::Keyset::Key>
+    crypto::tink::util::StatusOr<
+        crypto::tink::util::SecretProto<google::crypto::tink::Keyset::Key>>
     CreateKeysetKey(int id) {
       return entry_->CreateKeysetKey(id);
     }
@@ -137,6 +143,13 @@ class KeysetHandleBuilder {
 
   // Returns entry from keyset builder at `index`.
   KeysetHandleBuilder::Entry& operator[](int index) { return entries_[index]; }
+
+  // Sets MonitoringAnnotations. If not called, then the default value of an
+  // empty map is used. When called multiple times, previous values are
+  // replaced.
+  KeysetHandleBuilder& SetMonitoringAnnotations(
+      const absl::flat_hash_map<std::string, std::string>&
+          monitoring_annotations);
 
   // Creates a new `KeysetHandle` object.
   //
@@ -159,6 +172,7 @@ class KeysetHandleBuilder {
   crypto::tink::util::Status CheckIdAssignments();
 
   std::vector<KeysetHandleBuilder::Entry> entries_;
+  absl::flat_hash_map<std::string, std::string> monitoring_annotations_;
 
   bool build_called_ = false;
 };

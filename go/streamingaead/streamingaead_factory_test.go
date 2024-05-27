@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-////////////////////////////////////////////////////////////////////////////////
 
 package streamingaead_test
 
@@ -20,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 	"testing"
 
@@ -46,7 +43,7 @@ func TestFactoryMultipleKeys(t *testing.T) {
 
 	keysetHandle, err := testkeyset.NewHandle(keyset)
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 
 	a, err := streamingaead.New(keysetHandle)
@@ -66,7 +63,10 @@ func TestFactoryMultipleKeys(t *testing.T) {
 			t.Errorf("expect a raw key")
 		}
 		keyset2 := testutil.NewKeyset(rawKey.KeyId, []*tinkpb.Keyset_Key{rawKey})
-		keysetHandle2, _ := testkeyset.NewHandle(keyset2)
+		keysetHandle2, err := testkeyset.NewHandle(keyset2)
+		if err != nil {
+			t.Fatalf("testkeyset.NewHandle(keyset2) err = %q, want nil", err)
+		}
 		a2, err := streamingaead.New(keysetHandle2)
 		if err != nil {
 			t.Errorf("streamingaead.New failed: %s", err)
@@ -78,7 +78,10 @@ func TestFactoryMultipleKeys(t *testing.T) {
 
 	t.Run("Encrypt with a random key not in the keyset, decrypt with the keyset should fail", func(t *testing.T) {
 		keyset2 := testutil.NewTestAESGCMHKDFKeyset()
-		keysetHandle2, _ := testkeyset.NewHandle(keyset2)
+		keysetHandle2, err := testkeyset.NewHandle(keyset2)
+		if err != nil {
+			t.Fatalf("testkeyset.NewHandle(keyset2) err = %q, want nil", err)
+		}
 		a2, err := streamingaead.New(keysetHandle2)
 		if err != nil {
 			t.Errorf("streamingaead.New failed: %s", err)

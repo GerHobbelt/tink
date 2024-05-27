@@ -38,7 +38,17 @@ public final class KmsClients {
 
   private static final CopyOnWriteArrayList<KmsClient> clients = new CopyOnWriteArrayList<>();
 
-  /** Adds a client to the list of known {@link KmsClient}-objects. */
+  /**
+   * Adds a client to the list of known {@link KmsClient}-objects.
+   *
+   * <p>This function will always add the {@code client} to a global list. So this function should
+   * only be called on startup and not on every operation.
+   *
+   * <p>It is often not necessary to use this function. For example, you can call {@link
+   * KmsClient#getAead} to get a remote {@link Aead}. Use this {@link Aead} to encrypt a keyset with
+   * {@link TinkProtoKeysetFormat#serializeEncryptedKeyset}, or to create an envelope {@link Aead}
+   * using {@link com.google.crypto.tink.aead.KmsEnvelopeAead#create}.
+   */
   public static void add(KmsClient client) {
     clients.add(client);
   }
@@ -47,7 +57,7 @@ public final class KmsClients {
    * Returns the first {@link KmsClient} registered with {@link KmsClients#add} that supports {@code
    * keyUri}.
    *
-   * @throws GeneralSecurityException if cannot found any KMS clients that support {@code keyUri}
+   * @throws GeneralSecurityException if no KMS clients can be found that support {@code keyUri}
    */
   public static KmsClient get(String keyUri) throws GeneralSecurityException {
     for (KmsClient client : clients) {

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc.
+// Copyright 2017 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,13 +18,11 @@ package com.google.crypto.tink;
 
 import com.google.crypto.tink.annotations.Alpha;
 import com.google.crypto.tink.internal.InternalConfiguration;
-import com.google.crypto.tink.internal.LegacyProtoParameters;
+import com.google.crypto.tink.internal.MutableKeyCreationRegistry;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutableSerializationRegistry;
+import com.google.crypto.tink.internal.PrimitiveSet;
 import com.google.crypto.tink.internal.ProtoKeySerialization;
-import com.google.crypto.tink.internal.ProtoParametersSerialization;
-import com.google.crypto.tink.internal.RegistryConfiguration;
-import com.google.crypto.tink.internal.TinkBugException;
 import com.google.crypto.tink.monitoring.MonitoringAnnotations;
 import com.google.crypto.tink.proto.EncryptedKeyset;
 import com.google.crypto.tink.proto.KeyData;
@@ -38,6 +36,7 @@ import com.google.crypto.tink.tinkkey.internal.InternalKeyHandle;
 import com.google.crypto.tink.tinkkey.internal.ProtoKey;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.Immutable;
+import com.google.errorprone.annotations.InlineMe;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -311,26 +310,6 @@ public final class KeysetHandle {
       return id;
     }
 
-    private static Keyset.Key createKeyFromParameters(
-        Parameters parameters, int id, KeyStatusType keyStatusType)
-        throws GeneralSecurityException {
-      ProtoParametersSerialization serializedParameters;
-      if (parameters instanceof LegacyProtoParameters) {
-        serializedParameters = ((LegacyProtoParameters) parameters).getSerialization();
-      } else {
-        serializedParameters =
-            MutableSerializationRegistry.globalInstance()
-                .serializeParameters(parameters, ProtoParametersSerialization.class);
-      }
-      KeyData keyData = Registry.newKeyData(serializedParameters.getKeyTemplate());
-      return Keyset.Key.newBuilder()
-          .setKeyId(id)
-          .setStatus(keyStatusType)
-          .setKeyData(keyData)
-          .setOutputPrefixType(serializedParameters.getKeyTemplate().getOutputPrefixType())
-          .build();
-    }
-
     private static int getNextIdFromBuilderEntry(
         KeysetHandle.Builder.Entry builderEntry, Set<Integer> idsSoFar)
         throws GeneralSecurityException {
@@ -344,24 +323,6 @@ public final class KeysetHandle {
         id = builderEntry.strategy.getFixedId();
       }
       return id;
-    }
-
-    private static Keyset.Key createKeysetKeyFromBuilderEntry(
-        KeysetHandle.Builder.Entry builderEntry, int id) throws GeneralSecurityException {
-      if (builderEntry.key == null) {
-        return createKeyFromParameters(
-            builderEntry.parameters, id, serializeStatus(builderEntry.getStatus()));
-      } else {
-        ProtoKeySerialization serializedKey =
-            MutableSerializationRegistry.globalInstance()
-                .serializeKey(
-                    builderEntry.key, ProtoKeySerialization.class, InsecureSecretKeyAccess.get());
-        @Nullable Integer idRequirement = serializedKey.getIdRequirementOrNull();
-        if (idRequirement != null && idRequirement != id) {
-          throw new GeneralSecurityException("Wrong ID set for key with ID requirement");
-        }
-        return toKeysetKey(id, serializeStatus(builderEntry.getStatus()), serializedKey);
-      }
     }
 
     /**
@@ -392,6 +353,7 @@ public final class KeysetHandle {
       }
       buildCalled = true;
       Keyset.Builder keysetBuilder = Keyset.newBuilder();
+      List<KeysetHandle.Entry> handleEntries = new ArrayList<>(entries.size());
       Integer primaryId = null;
 
       checkIdAssignments(entries);
@@ -406,7 +368,23 @@ public final class KeysetHandle {
         }
         idsSoFar.add(id);
 
-        Keyset.Key keysetKey = createKeysetKeyFromBuilderEntry(builderEntry, id);
+        Keyset.Key keysetKey;
+        @Nullable KeysetHandle.Entry handleEntry;
+
+        if (builderEntry.key != null) {
+          handleEntry =
+              new KeysetHandle.Entry(
+                  builderEntry.key, builderEntry.keyStatus, id, builderEntry.isPrimary);
+          keysetKey = createKeysetKey(builderEntry.key, builderEntry.keyStatus, id);
+        } else {
+          Integer idRequirement = builderEntry.parameters.hasIdRequirement() ? id : null;
+          Key key =
+              MutableKeyCreationRegistry.globalInstance()
+                  .createKey(builderEntry.parameters, idRequirement);
+          handleEntry =
+              new KeysetHandle.Entry(key, builderEntry.keyStatus, id, builderEntry.isPrimary);
+          keysetKey = createKeysetKey(key, builderEntry.keyStatus, id);
+        }
         keysetBuilder.addKey(keysetKey);
         if (builderEntry.isPrimary) {
           if (primaryId != null) {
@@ -417,12 +395,15 @@ public final class KeysetHandle {
             throw new GeneralSecurityException("Primary key is not enabled");
           }
         }
+        handleEntries.add(handleEntry);
       }
       if (primaryId == null) {
         throw new GeneralSecurityException("No primary was set");
       }
       keysetBuilder.setPrimaryKeyId(primaryId);
-      return KeysetHandle.fromKeysetAndAnnotations(keysetBuilder.build(), annotations);
+      Keyset keyset = keysetBuilder.build();
+      assertEnoughKeyMaterial(keyset);
+      return new KeysetHandle(keyset, handleEntries, annotations);
     }
   }
 
@@ -437,7 +418,6 @@ public final class KeysetHandle {
    * There should always be exactly one key which is marked as a primary, however, at the moment
    * Tink still accepts keysets which have none. This will be changed in the future.
    */
-  @Alpha
   @Immutable
   public static final class Entry {
     private Entry(Key key, KeyStatus keyStatus, int id, boolean isPrimary) {
@@ -520,20 +500,6 @@ public final class KeysetHandle {
     throw new IllegalStateException("Unknown key status");
   }
 
-  private static Keyset.Key toKeysetKey(
-      int id, KeyStatusType status, ProtoKeySerialization protoKeySerialization) {
-    return Keyset.Key.newBuilder()
-        .setKeyData(
-            KeyData.newBuilder()
-                .setTypeUrl(protoKeySerialization.getTypeUrl())
-                .setValue(protoKeySerialization.getValue())
-                .setKeyMaterialType(protoKeySerialization.getKeyMaterialType()))
-        .setStatus(status)
-        .setKeyId(id)
-        .setOutputPrefixType(protoKeySerialization.getOutputPrefixType())
-        .build();
-  }
-
   /**
    * Returns an immutable list of key objects for this keyset.
    *
@@ -544,11 +510,8 @@ public final class KeysetHandle {
     List<Entry> result = new ArrayList<>(keyset.getKeyCount());
     for (Keyset.Key protoKey : keyset.getKeyList()) {
       int id = protoKey.getKeyId();
-      ProtoKeySerialization protoKeySerialization = toProtoKeySerialization(protoKey);
       try {
-        Key key =
-            MutableSerializationRegistry.globalInstance()
-                .parseKeyWithLegacyFallback(protoKeySerialization, InsecureSecretKeyAccess.get());
+        Key key = toKey(protoKey);
         result.add(
             new KeysetHandle.Entry(
                 key, parseStatus(protoKey.getStatus()), id, id == keyset.getPrimaryKeyId()));
@@ -557,23 +520,6 @@ public final class KeysetHandle {
       }
     }
     return Collections.unmodifiableList(result);
-  }
-
-  private static ProtoKeySerialization toProtoKeySerialization(Keyset.Key protoKey) {
-    int id = protoKey.getKeyId();
-    @Nullable
-    Integer idRequirement = protoKey.getOutputPrefixType() == OutputPrefixType.RAW ? null : id;
-    try {
-      return ProtoKeySerialization.create(
-          protoKey.getKeyData().getTypeUrl(),
-          protoKey.getKeyData().getValue(),
-          protoKey.getKeyData().getKeyMaterialType(),
-          protoKey.getOutputPrefixType(),
-          idRequirement);
-    } catch (GeneralSecurityException e) {
-      // Cannot happen -- this only happens if the idRequirement doesn't match OutputPrefixType
-      throw new TinkBugException("Creating a protokey serialization failed", e);
-    }
   }
 
   private KeysetHandle.Entry entryByIndex(int i) {
@@ -711,21 +657,20 @@ public final class KeysetHandle {
    * parsed.
    */
   public KeysetHandle.Entry getPrimary() {
-    for (int i = 0; i < keyset.getKeyCount(); ++i) {
-      if (keyset.getKey(i).getKeyId() == keyset.getPrimaryKeyId()) {
-        KeysetHandle.Entry result = entryByIndex(i);
-        if (result.getStatus() != KeyStatus.ENABLED) {
+    for (Entry entry : entries) {
+      if (entry != null && entry.isPrimary()) {
+        if (entry.getStatus() != KeyStatus.ENABLED) {
           throw new IllegalStateException("Keyset has primary which isn't enabled");
         }
-        return result;
+        return entry;
       }
     }
-    throw new IllegalStateException("Keyset has no primary");
+    throw new IllegalStateException("Keyset has no valid primary");
   }
 
   /** Returns the size of this keyset. */
   public int size() {
-    return keyset.getKeyCount();
+    return entries.size();
   }
 
   /**
@@ -941,7 +886,6 @@ public final class KeysetHandle {
       throws GeneralSecurityException, IOException {
     EncryptedKeyset encryptedKeyset = encrypt(keyset, masterKey, associatedData);
     keysetWriter.write(encryptedKeyset);
-    return;
   }
 
   /**
@@ -955,7 +899,6 @@ public final class KeysetHandle {
   public void writeNoSecret(KeysetWriter writer) throws GeneralSecurityException, IOException {
     assertNoSecretKeyMaterial(keyset);
     writer.write(keyset);
-    return;
   }
 
   /** Encrypts the keyset with the {@link Aead} master key. */
@@ -1011,39 +954,54 @@ public final class KeysetHandle {
     if (keyset == null) {
       throw new GeneralSecurityException("cleartext keyset is not available");
     }
-    Keyset.Builder keysetBuilder = Keyset.newBuilder();
-    for (Keyset.Key key : keyset.getKeyList()) {
-      KeyData keyData = createPublicKeyData(key.getKeyData());
-      keysetBuilder.addKey(key.toBuilder().setKeyData(keyData).build());
+
+    Keyset.Builder publicKeysetBuilder = Keyset.newBuilder();
+    List<KeysetHandle.Entry> publicEntries = new ArrayList<>(entries.size());
+
+    int i = 0;
+    for (KeysetHandle.Entry entry : entries) {
+      KeysetHandle.Entry publicEntry;
+      Keyset.Key publicProtoKey;
+
+      if (entry != null && entry.getKey() instanceof PrivateKey) {
+        Key publicKey = ((PrivateKey) entry.getKey()).getPublicKey();
+        publicEntry =
+            new KeysetHandle.Entry(publicKey, entry.getStatus(), entry.getId(), entry.isPrimary());
+        publicProtoKey = createKeysetKey(publicKey, entry.getStatus(), entry.getId());
+      } else {
+        Keyset.Key protoKey = keyset.getKey(i);
+        KeyData keyData = getPublicKeyDataFromRegistry(protoKey.getKeyData());
+        publicProtoKey = protoKey.toBuilder().setKeyData(keyData).build();
+        try {
+          Key publicKey = toKey(publicProtoKey);
+          int id = publicProtoKey.getKeyId();
+          publicEntry =
+              new KeysetHandle.Entry(
+                  publicKey,
+                  parseStatus(publicProtoKey.getStatus()),
+                  id,
+                  id == keyset.getPrimaryKeyId());
+        } catch (GeneralSecurityException e) {
+          publicEntry = null;
+        }
+      }
+
+      publicKeysetBuilder.addKey(publicProtoKey);
+      publicEntries.add(publicEntry);
+      i++;
     }
-    keysetBuilder.setPrimaryKeyId(keyset.getPrimaryKeyId());
-    return KeysetHandle.fromKeyset(keysetBuilder.build());
+    publicKeysetBuilder.setPrimaryKeyId(keyset.getPrimaryKeyId());
+    return new KeysetHandle(publicKeysetBuilder.build(), publicEntries, annotations);
   }
 
-  private static KeyData createPublicKeyData(KeyData privateKeyData)
+  private static KeyData getPublicKeyDataFromRegistry(KeyData privateKeyData)
       throws GeneralSecurityException {
     if (privateKeyData.getKeyMaterialType() != KeyData.KeyMaterialType.ASYMMETRIC_PRIVATE) {
       throw new GeneralSecurityException("The keyset contains a non-private key");
     }
     KeyData publicKeyData =
         Registry.getPublicKeyData(privateKeyData.getTypeUrl(), privateKeyData.getValue());
-    validate(publicKeyData);
     return publicKeyData;
-  }
-
-  @SuppressWarnings("deprecation")
-  private static void validate(KeyData keyData) throws GeneralSecurityException {
-    // This will throw GeneralSecurityException if the keyData is invalid.
-    // Note: this calls a deprecated function to validate the "KeyData" proto. The usage of this
-    // deprecated function is unfortunate. However, in the end we simply want to remove this call.
-    // The only usage of this is in "getPublicKeysetHandle". This should go away, in principle
-    // the code of getPublicKeysetHandle should simply look at each entry, cast each key to
-    // {@link PrivateKey} (throw a GeneralSecurityException if this fails), call getPublicKey()
-    // and insert the result into a new keyset with the same ID and status, then return the result.
-    // If done like this, there is no reason to validate the returned Key object.
-    // (However, also note that this particular call here isn't very problematic; the problematic
-    // part of Registry.getPrimitive is that it misuses generics, but here we just want any Object).
-    Object unused = Registry.getPrimitive(keyData);
   }
 
   /**
@@ -1107,25 +1065,33 @@ public final class KeysetHandle {
     for (int i = 0; i < size(); ++i) {
       Keyset.Key protoKey = keyset.getKey(i);
       if (protoKey.getStatus().equals(KeyStatusType.ENABLED)) {
-        @Nullable
-        B primitive = getLegacyPrimitiveOrNull(config, protoKey, inputPrimitiveClassObject);
-        @Nullable B fullPrimitive = null;
-        // Entries.get(i) may be null (if the status is invalid in the proto, or parsing failed).
-        if (entries.get(i) != null) {
-          fullPrimitive =
-              getFullPrimitiveOrNull(config, entries.get(i).getKey(), inputPrimitiveClassObject);
+        KeysetHandle.Entry entry = entries.get(i);
+        // entry may be null (if the status is invalid in the proto, or parsing failed).
+        if (entry == null) {
+          throw new GeneralSecurityException(
+              "Key parsing of key with index "
+                  + i
+                  + " and type_url "
+                  + protoKey.getKeyData().getTypeUrl()
+                  + " failed, unable to get primitive");
         }
-        if (fullPrimitive == null && primitive == null) {
+        Key key = entry.getKey();
+        B fullPrimitive;
+        try {
+          fullPrimitive = config.getPrimitive(key, inputPrimitiveClassObject);
+        } catch (GeneralSecurityException e) {
           throw new GeneralSecurityException(
               "Unable to get primitive "
                   + inputPrimitiveClassObject
                   + " for key of type "
-                  + protoKey.getKeyData().getTypeUrl());
+                  + protoKey.getKeyData().getTypeUrl()
+                  + ", see https://developers.google.com/tink/faq/registration_errors",
+              e);
         }
         if (protoKey.getKeyId() == keyset.getPrimaryKeyId()) {
-          builder.addPrimaryFullPrimitiveAndOptionalPrimitive(fullPrimitive, primitive, protoKey);
+          builder.addPrimaryFullPrimitive(fullPrimitive, key, protoKey);
         } else {
-          builder.addFullPrimitiveAndOptionalPrimitive(fullPrimitive, primitive, protoKey);
+          builder.addFullPrimitive(fullPrimitive, key, protoKey);
         }
       }
     }
@@ -1155,6 +1121,9 @@ public final class KeysetHandle {
    * Returns a primitive from this keyset, using the global registry to create resources creating
    * the primitive.
    */
+  @InlineMe(
+      replacement = "this.getPrimitive(RegistryConfiguration.get(), targetClassObject)",
+      imports = {"com.google.crypto.tink.RegistryConfiguration"})
   public <P> P getPrimitive(Class<P> targetClassObject) throws GeneralSecurityException {
     return getPrimitive(RegistryConfiguration.get(), targetClassObject);
   }
@@ -1179,39 +1148,6 @@ public final class KeysetHandle {
       }
     }
     throw new GeneralSecurityException("No primary key found in keyset.");
-  }
-
-  @Nullable
-  private static <B> B getLegacyPrimitiveOrNull(
-      InternalConfiguration config, Keyset.Key key, Class<B> inputPrimitiveClassObject)
-      throws GeneralSecurityException {
-    try {
-      return config.getLegacyPrimitive(key.getKeyData(), inputPrimitiveClassObject);
-    } catch (GeneralSecurityException e) {
-      if (e.getMessage().contains("No key manager found for key type ")
-          || e.getMessage().contains(" not supported by key manager of type ")) {
-        // Ignoring because the key may not have a corresponding legacy key manager.
-        return null;
-      }
-      // Otherwise the error is likely legit. Do not swallow.
-      throw e;
-    } catch (UnsupportedOperationException e) {
-      // We are using the new configuration that doesn't work with proto keys.
-      return null;
-    }
-  }
-
-  @Nullable
-  private <B> B getFullPrimitiveOrNull(
-      InternalConfiguration config, Key key, Class<B> inputPrimitiveClassObject)
-      throws GeneralSecurityException {
-    try {
-      return config.getPrimitive(key, inputPrimitiveClassObject);
-    } catch (GeneralSecurityException e) {
-      // Ignoring because the key may not yet have a corresponding class.
-      // TODO(lizatretyakova): stop ignoring when all key classes are migrated from protos.
-      return null;
-    }
   }
 
   /**
@@ -1247,5 +1183,50 @@ public final class KeysetHandle {
       return false;
     }
     return true;
+  }
+
+  private static ProtoKeySerialization toProtoKeySerialization(Keyset.Key protoKey)
+      throws GeneralSecurityException {
+    int id = protoKey.getKeyId();
+    @Nullable
+    Integer idRequirement = protoKey.getOutputPrefixType() == OutputPrefixType.RAW ? null : id;
+    return ProtoKeySerialization.create(
+        protoKey.getKeyData().getTypeUrl(),
+        protoKey.getKeyData().getValue(),
+        protoKey.getKeyData().getKeyMaterialType(),
+        protoKey.getOutputPrefixType(),
+        idRequirement);
+  }
+
+  private static Key toKey(Keyset.Key protoKey) throws GeneralSecurityException {
+    ProtoKeySerialization protoKeySerialization = toProtoKeySerialization(protoKey);
+    return MutableSerializationRegistry.globalInstance()
+        .parseKeyWithLegacyFallback(protoKeySerialization, InsecureSecretKeyAccess.get());
+  }
+
+  private static Keyset.Key toKeysetKey(
+      int id, KeyStatusType status, ProtoKeySerialization protoKeySerialization) {
+    return Keyset.Key.newBuilder()
+        .setKeyData(
+            KeyData.newBuilder()
+                .setTypeUrl(protoKeySerialization.getTypeUrl())
+                .setValue(protoKeySerialization.getValue())
+                .setKeyMaterialType(protoKeySerialization.getKeyMaterialType()))
+        .setStatus(status)
+        .setKeyId(id)
+        .setOutputPrefixType(protoKeySerialization.getOutputPrefixType())
+        .build();
+  }
+
+  private static Keyset.Key createKeysetKey(Key key, KeyStatus keyStatus, int id)
+      throws GeneralSecurityException {
+    ProtoKeySerialization serializedKey =
+        MutableSerializationRegistry.globalInstance()
+            .serializeKey(key, ProtoKeySerialization.class, InsecureSecretKeyAccess.get());
+    @Nullable Integer idRequirement = serializedKey.getIdRequirementOrNull();
+    if (idRequirement != null && idRequirement != id) {
+      throw new GeneralSecurityException("Wrong ID set for key with ID requirement");
+    }
+    return toKeysetKey(id, serializeStatus(keyStatus), serializedKey);
   }
 }

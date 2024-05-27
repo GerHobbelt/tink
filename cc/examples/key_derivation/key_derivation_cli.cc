@@ -23,8 +23,10 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tink/aead.h"
 #include "tink/aead/aead_config.h"
+#include "tink/config/global_registry.h"
 #include "util/util.h"
 #include "tink/keyderivation/key_derivation_config.h"
 #include "tink/keyderivation/keyset_deriver.h"
@@ -136,9 +138,9 @@ int main(int argc, char** argv) {
 
   std::clog << "Using keyset from file " << keyset_filename
             << " to derive a new AEAD keyset with the salt in file "
-            << salt_filename << "." << std::endl;
+            << salt_filename << "." << '\n';
   std::clog << "The resulting derived keyset will be written to "
-            << derived_keyset_filename << "." << std::endl;
+            << derived_keyset_filename << "." << '\n';
 
   CHECK_OK(tink_cc_examples::KeyDerivationCli(keyset_filename, salt_filename,
                                               derived_keyset_filename));

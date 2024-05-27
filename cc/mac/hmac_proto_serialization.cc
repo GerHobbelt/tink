@@ -19,6 +19,7 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tink/internal/key_parser.h"
 #include "tink/internal/key_serializer.h"
@@ -156,7 +157,7 @@ util::StatusOr<HmacParameters> ParseParameters(
 
   util::StatusOr<HmacParameters::HashType> hash_type =
       ToHashType(proto_key_format.params().hash());
-  if (!hash_type.ok()) return variant.status();
+  if (!hash_type.ok()) return hash_type.status();
 
   return HmacParameters::Create(proto_key_format.key_size(),
                                 proto_key_format.params().tag_size(),
@@ -197,10 +198,8 @@ util::StatusOr<HmacKey> ParseKey(
   }
 
   google::crypto::tink::HmacKey proto_key;
-  RestrictedData restricted_data = serialization.SerializedKeyProto();
-  // OSS proto library complains if input is not converted to a string.
-  if (!proto_key.ParseFromString(
-          std::string(restricted_data.GetSecret(*token)))) {
+  const RestrictedData& restricted_data = serialization.SerializedKeyProto();
+  if (!proto_key.ParseFromString(restricted_data.GetSecret(*token))) {
     return util::Status(absl::StatusCode::kInvalidArgument,
                         "Failed to parse HmacKey proto");
   }
@@ -214,7 +213,7 @@ util::StatusOr<HmacKey> ParseKey(
   if (!variant.ok()) return variant.status();
   util::StatusOr<HmacParameters::HashType> hash_type =
       ToHashType(proto_key.params().hash());
-  if (!hash_type.ok()) return variant.status();
+  if (!hash_type.ok()) return hash_type.status();
 
   util::StatusOr<HmacParameters> parameters = HmacParameters::Create(
       proto_key.key_value().length(), proto_key.params().tag_size(), *hash_type,
@@ -245,8 +244,7 @@ util::StatusOr<internal::ProtoKeySerialization> SerializeKey(
   google::crypto::tink::HmacKey proto_key;
   *proto_key.mutable_params() = proto_params;
   proto_key.set_version(0);
-  // OSS proto library complains if input is not converted to a string.
-  proto_key.set_key_value(std::string(restricted_input->GetSecret(*token)));
+  proto_key.set_key_value(restricted_input->GetSecret(*token));
 
   util::StatusOr<OutputPrefixType> output_prefix_type =
       ToOutputPrefixType(key.GetParameters().GetVariant());

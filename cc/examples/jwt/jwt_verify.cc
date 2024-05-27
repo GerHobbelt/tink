@@ -24,6 +24,8 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
+#include "tink/config/global_registry.h"
 #include "util/util.h"
 #include "tink/jwt/jwk_set_converter.h"
 #include "tink/jwt/jwt_public_key_verify.h"
@@ -102,8 +104,7 @@ int main(int argc, char** argv) {
   std::string token_filename = absl::GetFlag(FLAGS_token_filename);
 
   std::clog << "Using keyset in " << jwk_set_filename << " to ";
-  std::clog << " verify a token with expected audience '" << audience
-            << std::endl;
+  std::clog << " verify a token with expected audience '" << audience << '\n';
 
   CHECK_OK(
       tink_cc_examples::JwtVerify(jwk_set_filename, audience, token_filename));

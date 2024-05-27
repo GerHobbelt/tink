@@ -20,6 +20,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "tink/aead/aead_key_templates.h"
 #include "tink/aead/aes_gcm_key_manager.h"
@@ -113,7 +114,7 @@ TEST_F(KeyDerivationKeyTemplatesTest, CreatePrfBasedKeyTemplateInvalidPrfKey) {
   EXPECT_THAT(KeyDerivationKeyTemplates::CreatePrfBasedKeyTemplate(
                   AeadKeyTemplates::Aes256Gcm(), AeadKeyTemplates::Aes256Gcm())
                   .status(),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(KeyDerivationKeyTemplatesTest,
@@ -137,10 +138,11 @@ TEST_F(KeyDerivationKeyTemplatesTest,
   util::StatusOr<KeyTemplate> derived_key_template =
       KeyDerivationKeyTemplates::CreatePrfBasedKeyTemplate(
           PrfKeyTemplates::HkdfSha256(), AeadKeyTemplates::Aes256Gcm());
+  ASSERT_THAT(derived_key_template, IsOk());
   EXPECT_THAT(KeyDerivationKeyTemplates::CreatePrfBasedKeyTemplate(
                   PrfKeyTemplates::HkdfSha256(), *derived_key_template)
                   .status(),
-              StatusIs(absl::StatusCode::kUnimplemented));
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(KeyDerivationKeyTemplatesTest,
@@ -173,25 +175,6 @@ TEST_F(KeyDerivationKeyTemplatesTest,
               IsOk());
   ASSERT_THAT(
       Registry::RegisterKeyTypeManager(absl::make_unique<AesGcmKeyManager>(),
-                                       /*new_key_allowed=*/true),
-      IsOk());
-
-  EXPECT_THAT(KeyDerivationKeyTemplates::CreatePrfBasedKeyTemplate(
-                  PrfKeyTemplates::HkdfSha256(), AeadKeyTemplates::Aes256Gcm()),
-              Not(IsOk()));
-}
-
-TEST_F(KeyDerivationKeyTemplatesTest,
-       CreatePrfBasedKeyTemplateNoAesGcmKeyManager) {
-  ASSERT_THAT(Registry::RegisterPrimitiveWrapper(
-                  absl::make_unique<KeysetDeriverWrapper>()),
-              IsOk());
-  ASSERT_THAT(Registry::RegisterKeyTypeManager(
-                  absl::make_unique<internal::PrfBasedDeriverKeyManager>(),
-                  /*new_key_allowed=*/true),
-              IsOk());
-  ASSERT_THAT(
-      Registry::RegisterKeyTypeManager(absl::make_unique<HkdfPrfKeyManager>(),
                                        /*new_key_allowed=*/true),
       IsOk());
 
