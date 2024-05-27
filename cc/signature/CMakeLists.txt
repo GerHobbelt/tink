@@ -485,6 +485,47 @@ tink_cc_library(
     tink::proto::tink_cc_proto
 )
 
+tink_cc_library(
+  NAME rsa_ssa_pkcs1_parameters
+  SRCS
+    rsa_ssa_pkcs1_parameters.cc
+    rsa_ssa_pkcs1_parameters.h
+  DEPS
+    tink::signature::signature_parameters
+    absl::status
+    absl::strings
+    absl::optional
+    crypto
+    tink::core::parameters
+    tink::internal::bn_util
+    tink::internal::rsa_util
+    tink::internal::ssl_unique_ptr
+    tink::util::status
+    tink::util::statusor
+)
+
+tink_cc_library(
+  NAME rsa_ssa_pkcs1_public_key
+  SRCS
+    rsa_ssa_pkcs1_public_key.cc
+    rsa_ssa_pkcs1_public_key.h
+  DEPS
+    tink::signature::rsa_ssa_pkcs1_parameters
+    tink::signature::signature_public_key
+    absl::core_headers
+    absl::status
+    absl::strings
+    absl::str_format
+    absl::optional
+    crypto
+    tink::core::big_integer
+    tink::core::key
+    tink::core::partial_key_access_token
+    tink::subtle::subtle_util
+    tink::util::status
+    tink::util::statusor
+)
+
 # tests
 
 tink_cc_test(
@@ -908,4 +949,40 @@ tink_cc_test(
     tink::util::test_matchers
     tink::proto::ed25519_cc_proto
     tink::proto::tink_cc_proto
+)
+
+tink_cc_test(
+  NAME rsa_ssa_pkcs1_parameters_test
+  SRCS
+    rsa_ssa_pkcs1_parameters_test.cc
+  DEPS
+    tink::signature::rsa_ssa_pkcs1_parameters
+    gmock
+    absl::status
+    absl::strings
+    crypto
+    tink::internal::bn_util
+    tink::internal::ssl_unique_ptr
+    tink::util::statusor
+    tink::util::test_matchers
+)
+
+tink_cc_test(
+  NAME rsa_ssa_pkcs1_public_key_test
+  SRCS
+    rsa_ssa_pkcs1_public_key_test.cc
+  DEPS
+    tink::signature::rsa_ssa_pkcs1_parameters
+    tink::signature::rsa_ssa_pkcs1_public_key
+    gmock
+    absl::status
+    absl::strings
+    absl::optional
+    crypto
+    tink::core::big_integer
+    tink::core::partial_key_access
+    tink::internal::bn_util
+    tink::internal::ssl_unique_ptr
+    tink::util::statusor
+    tink::util::test_matchers
 )

@@ -22,8 +22,11 @@ import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.StreamingAead;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
+import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.proto.AesCtrHmacStreamingKey;
 import com.google.crypto.tink.proto.AesCtrHmacStreamingKeyFormat;
@@ -69,7 +72,20 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
   /** Minimum tag size in bytes. This provides minimum 80-bit security strength. */
   private static final int MIN_TAG_SIZE_IN_BYTES = 10;
 
+  private static final PrimitiveConstructor<
+          com.google.crypto.tink.streamingaead.AesCtrHmacStreamingKey, StreamingAead>
+      AES_CTR_HMAC_STREAMING_AEAD_PRIMITIVE_CONSTRUCTOR =
+          PrimitiveConstructor.create(
+              AesCtrHmacStreaming::create,
+              com.google.crypto.tink.streamingaead.AesCtrHmacStreamingKey.class,
+              StreamingAead.class);
+
   private static final int NONCE_PREFIX_IN_BYTES = 7;
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  }
 
   @Override
   public String getKeyType() {
@@ -134,9 +150,10 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
             .setVersion(getVersion())
             .build();
       }
+    };
+  }
 
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put(
             "AES128_CTR_HMAC_SHA256_4KB",
@@ -151,8 +168,6 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
             "AES256_CTR_HMAC_SHA256_1MB",
             PredefinedStreamingAeadParameters.AES256_CTR_HMAC_SHA256_1MB);
         return Collections.unmodifiableMap(result);
-      }
-    };
   }
 
   private static void validateParams(AesCtrHmacStreamingParams params)
@@ -208,8 +223,9 @@ public final class AesCtrHmacStreamingKeyManager extends KeyTypeManager<AesCtrHm
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new AesCtrHmacStreamingKeyManager(), newKeyAllowed);
     AesCtrHmacStreamingProtoSerialization.register();
-    MutableParametersRegistry.globalInstance()
-        .putAll(new AesCtrHmacStreamingKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
+    MutablePrimitiveRegistry.globalInstance()
+        .registerPrimitiveConstructor(AES_CTR_HMAC_STREAMING_AEAD_PRIMITIVE_CONSTRUCTOR);
   }
 
   /**

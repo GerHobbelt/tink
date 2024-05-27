@@ -21,6 +21,7 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
@@ -62,6 +63,11 @@ public final class AesCmacPrfKeyManager extends KeyTypeManager<AesCmacPrfKey> {
       PRF_PRIMITIVE_CONSTRUCTOR =
           PrimitiveConstructor.create(
               PrfAesCmac::create, com.google.crypto.tink.prf.AesCmacPrfKey.class, Prf.class);
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  }
 
   @Override
   public String getKeyType() {
@@ -116,16 +122,15 @@ public final class AesCmacPrfKeyManager extends KeyTypeManager<AesCmacPrfKey> {
             .setKeyValue(ByteString.copyFrom(Random.randBytes(format.getKeySize())))
             .build();
       }
-
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
-        Map<String, Parameters> result = new HashMap<>();
-        result.put("AES256_CMAC_PRF", PredefinedPrfParameters.AES_CMAC_PRF);
-        // Identical to AES256_CMAC_PRF, needed for backward compatibility with PrfKeyTemplates.
-        result.put("AES_CMAC_PRF", PredefinedPrfParameters.AES_CMAC_PRF);
-        return Collections.unmodifiableMap(result);
-      }
     };
+  }
+
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+    Map<String, Parameters> result = new HashMap<>();
+    result.put("AES256_CMAC_PRF", PredefinedPrfParameters.AES_CMAC_PRF);
+    // Identical to AES256_CMAC_PRF, needed for backward compatibility with PrfKeyTemplates.
+    result.put("AES_CMAC_PRF", PredefinedPrfParameters.AES_CMAC_PRF);
+    return Collections.unmodifiableMap(result);
   }
 
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
@@ -133,8 +138,7 @@ public final class AesCmacPrfKeyManager extends KeyTypeManager<AesCmacPrfKey> {
     AesCmacPrfProtoSerialization.register();
     MutablePrimitiveRegistry.globalInstance()
         .registerPrimitiveConstructor(PRF_PRIMITIVE_CONSTRUCTOR);
-    MutableParametersRegistry.globalInstance()
-        .putAll(new AesCmacPrfKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
   }
 
   /**

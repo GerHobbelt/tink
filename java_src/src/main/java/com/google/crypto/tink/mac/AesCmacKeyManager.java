@@ -22,6 +22,7 @@ import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Mac;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
@@ -77,6 +78,11 @@ public final class AesCmacKeyManager extends KeyTypeManager<AesCmacKey> {
           PrfMac::create,
           com.google.crypto.tink.mac.AesCmacKey.class,
           Mac.class);
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  }
 
   @Override
   public String getKeyType() {
@@ -143,9 +149,10 @@ public final class AesCmacKeyManager extends KeyTypeManager<AesCmacKey> {
             .setParams(format.getParams())
             .build();
       }
+    };
+  }
 
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put("AES_CMAC", PredefinedMacParameters.AES_CMAC);
         result.put("AES256_CMAC", PredefinedMacParameters.AES_CMAC);
@@ -157,8 +164,6 @@ public final class AesCmacKeyManager extends KeyTypeManager<AesCmacKey> {
                 .setVariant(AesCmacParameters.Variant.NO_PREFIX)
                 .build());
         return Collections.unmodifiableMap(result);
-      }
-    };
   }
 
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
@@ -168,8 +173,7 @@ public final class AesCmacKeyManager extends KeyTypeManager<AesCmacKey> {
         .registerPrimitiveConstructor(CHUNKED_MAC_PRIMITIVE_CONSTRUCTOR);
     MutablePrimitiveRegistry.globalInstance()
         .registerPrimitiveConstructor(MAC_PRIMITIVE_CONSTRUCTOR);
-    MutableParametersRegistry.globalInstance()
-        .putAll(new AesCmacKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
   }
 
   /**

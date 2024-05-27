@@ -24,6 +24,7 @@ import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
 import com.google.crypto.tink.aead.AesCtrHmacAeadParameters;
 import com.google.crypto.tink.aead.AesGcmParameters;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTemplateProtoConverter;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
@@ -86,6 +87,11 @@ public final class EciesAeadHkdfPrivateKeyManager
                 demHelper);
           }
         });
+  }
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
   }
 
   @Override
@@ -167,9 +173,10 @@ public final class EciesAeadHkdfPrivateKeyManager
             .setKeyValue(ByteString.copyFrom(privKey.getS().toByteArray()))
             .build();
       }
+    };
+  }
 
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put(
             "ECIES_P256_HKDF_HMAC_SHA256_AES128_GCM",
@@ -316,8 +323,6 @@ public final class EciesAeadHkdfPrivateKeyManager
                         .build())
                 .build());
         return Collections.unmodifiableMap(result);
-      }
-    };
   }
 
   /**
@@ -329,8 +334,7 @@ public final class EciesAeadHkdfPrivateKeyManager
     Registry.registerAsymmetricKeyManagers(
         new EciesAeadHkdfPrivateKeyManager(), new EciesAeadHkdfPublicKeyManager(), newKeyAllowed);
     EciesProtoSerialization.register();
-    MutableParametersRegistry.globalInstance()
-        .putAll(new EciesAeadHkdfPrivateKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
   }
 
   /**

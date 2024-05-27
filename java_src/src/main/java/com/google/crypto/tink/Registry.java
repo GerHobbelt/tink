@@ -17,21 +17,23 @@
 package com.google.crypto.tink;
 
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
+import com.google.crypto.tink.internal.KeyManagerRegistry;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.internal.PrivateKeyTypeManager;
+import com.google.crypto.tink.prf.Prf;
 import com.google.crypto.tink.proto.KeyData;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
-import java.io.InputStream;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -84,54 +86,11 @@ public final class Registry {
   private static final AtomicReference<KeyManagerRegistry> keyManagerRegistry =
       new AtomicReference<>(new KeyManagerRegistry());
 
-  private static final ConcurrentMap<String, KeyDataDeriver> keyDeriverMap =
-      new ConcurrentHashMap<>(); // typeUrl -> deriver (created out of KeyTypeManager).
-
   private static final ConcurrentMap<String, Boolean> newKeyAllowedMap =
       new ConcurrentHashMap<>(); // typeUrl -> newKeyAllowed mapping
 
   private static final ConcurrentMap<String, Catalogue<?>> catalogueMap =
       new ConcurrentHashMap<>(); //  name -> catalogue mapping
-
-  private static final ConcurrentMap<String, Parameters> parametersMap =
-      new ConcurrentHashMap<>(); // name -> Parameters mapping
-
-  private static interface KeyDataDeriver {
-    KeyData deriveKeyData(ByteString serializedKeyFormat, InputStream stream)
-        throws GeneralSecurityException;
-  }
-
-  private static <KeyProtoT extends MessageLite> KeyDataDeriver createDeriverFor(
-      final KeyTypeManager<KeyProtoT> keyManager) {
-    return new KeyDataDeriver() {
-      private <KeyFormatProtoT extends MessageLite> MessageLite deriveKeyWithFactory(
-          ByteString serializedKeyFormat,
-          InputStream stream,
-          KeyTypeManager.KeyFactory<KeyFormatProtoT, KeyProtoT> keyFactory)
-          throws GeneralSecurityException {
-        KeyFormatProtoT keyFormat;
-        try {
-          keyFormat = keyFactory.parseKeyFormat(serializedKeyFormat);
-        } catch (InvalidProtocolBufferException e) {
-          throw new GeneralSecurityException("parsing key format failed in deriveKey", e);
-        }
-        keyFactory.validateKeyFormat(keyFormat);
-        return keyFactory.deriveKey(keyFormat, stream);
-      }
-
-      @Override
-      public KeyData deriveKeyData(ByteString serializedKeyFormat, InputStream stream)
-          throws GeneralSecurityException {
-        KeyTypeManager.KeyFactory<?, KeyProtoT> keyFactory = keyManager.keyFactory();
-        MessageLite keyValue = deriveKeyWithFactory(serializedKeyFormat, stream, keyFactory);
-        return KeyData.newBuilder()
-            .setTypeUrl(keyManager.getKeyType())
-            .setValue(keyValue.toByteString())
-            .setKeyMaterialType(keyManager.keyMaterialType())
-            .build();
-      }
-    };
-  }
 
   /**
    * Resets the registry.
@@ -144,10 +103,8 @@ public final class Registry {
   static synchronized void reset() {
     keyManagerRegistry.set(new KeyManagerRegistry());
     MutablePrimitiveRegistry.resetGlobalInstanceTestOnly();
-    keyDeriverMap.clear();
     newKeyAllowedMap.clear();
     catalogueMap.clear();
-    parametersMap.clear();
   }
 
   /**
@@ -237,6 +194,23 @@ public final class Registry {
     registerKeyManager(manager, /* newKeyAllowed= */ true);
   }
 
+  private static Set<Class<?>> createAllowedPrimitives() {
+    HashSet<Class<?>> result = new HashSet<>();
+    result.add(Aead.class);
+    result.add(DeterministicAead.class);
+    result.add(StreamingAead.class);
+    result.add(HybridEncrypt.class);
+    result.add(HybridDecrypt.class);
+    result.add(Mac.class);
+    result.add(Prf.class);
+    result.add(PublicKeySign.class);
+    result.add(PublicKeyVerify.class);
+    return result;
+  }
+
+  private static final Set<Class<?>> ALLOWED_PRIMITIVES =
+      Collections.unmodifiableSet(createAllowedPrimitives());
+
   /**
    * Tries to register {@code manager} for {@code manager.getKeyType()}. If {@code newKeyAllowed} is
    * true, users can generate new keys with this manager using the {@link Registry#newKey} methods.
@@ -254,6 +228,13 @@ public final class Registry {
     if (manager == null) {
       throw new IllegalArgumentException("key manager must be non-null.");
     }
+    if (!ALLOWED_PRIMITIVES.contains(manager.getPrimitiveClass())) {
+      throw new GeneralSecurityException(
+          "Registration of key managers for class "
+              + manager.getPrimitiveClass()
+              + " has been disabled. Please file an issue on"
+              + " https://github.com/tink-crypto/tink-java");
+    }
     KeyManagerRegistry newKeyManagerRegistry = new KeyManagerRegistry(keyManagerRegistry.get());
     newKeyManagerRegistry.registerKeyManager(manager);
 
@@ -262,7 +243,7 @@ public final class Registry {
     }
     String typeUrl = manager.getKeyType();
     // Use an empty key format because old-style key managers don't export their key formats
-    ensureKeyManagerInsertable(typeUrl, Collections.emptyMap(), newKeyAllowed);
+    ensureKeyManagerInsertable(typeUrl, newKeyAllowed);
     newKeyAllowedMap.put(typeUrl, Boolean.valueOf(newKeyAllowed));
     keyManagerRegistry.set(newKeyManagerRegistry);
   }
@@ -294,17 +275,8 @@ public final class Registry {
     KeyManagerRegistry newKeyManagerRegistry = new KeyManagerRegistry(keyManagerRegistry.get());
     newKeyManagerRegistry.registerKeyManager(manager);
     String typeUrl = manager.getKeyType();
-    ensureKeyManagerInsertable(
-        typeUrl,
-        newKeyAllowed ? manager.keyFactory().namedParameters() : Collections.emptyMap(),
-        newKeyAllowed);
+    ensureKeyManagerInsertable(typeUrl, newKeyAllowed);
 
-    if (!keyManagerRegistry.get().typeUrlExists(typeUrl)) {
-      keyDeriverMap.put(typeUrl, createDeriverFor(manager));
-      if (newKeyAllowed) {
-        registerNamedParameters(manager.keyFactory().namedParameters());
-      }
-    }
     newKeyAllowedMap.put(typeUrl, Boolean.valueOf(newKeyAllowed));
     keyManagerRegistry.set(newKeyManagerRegistry);
   }
@@ -367,35 +339,10 @@ public final class Registry {
    *         <li>The key manager was already registered, but it contains new key templates.
    *         <li>The key manager is new, but it contains existing key templates.
    */
-  private static synchronized void ensureKeyManagerInsertable(
-      String typeUrl, Map<String, Parameters> namedParameters, boolean newKeyAllowed)
+  private static synchronized void ensureKeyManagerInsertable(String typeUrl, boolean newKeyAllowed)
       throws GeneralSecurityException {
     if (newKeyAllowed && newKeyAllowedMap.containsKey(typeUrl) && !newKeyAllowedMap.get(typeUrl)) {
       throw new GeneralSecurityException("New keys are already disallowed for key type " + typeUrl);
-    }
-
-    if (newKeyAllowed) {
-      if (keyManagerRegistry.get().typeUrlExists(typeUrl)) {
-        // When re-inserting an already present KeyTypeManager, no new key templates should be
-        // present.
-        for (Map.Entry<String, Parameters> entry : namedParameters.entrySet()) {
-          if (!parametersMap.containsKey(entry.getKey())) {
-            throw new GeneralSecurityException(
-                "Attempted to register a new key template "
-                    + entry.getKey()
-                    + " from an existing key manager of type "
-                    + typeUrl);
-          }
-        }
-      } else {
-        // Check that new key managers can't overwrite existing key templates.
-        for (Map.Entry<String, Parameters> entry : namedParameters.entrySet()) {
-          if (parametersMap.containsKey(entry.getKey())) {
-            throw new GeneralSecurityException(
-                "Attempted overwrite of a registered key template " + entry.getKey());
-          }
-        }
-      }
     }
   }
 
@@ -430,32 +377,14 @@ public final class Registry {
 
     String privateTypeUrl = privateKeyTypeManager.getKeyType();
     String publicTypeUrl = publicKeyTypeManager.getKeyType();
-    ensureKeyManagerInsertable(
-        privateTypeUrl,
-        newKeyAllowed
-            ? privateKeyTypeManager.keyFactory().namedParameters()
-            : Collections.emptyMap(),
-        newKeyAllowed);
+    ensureKeyManagerInsertable(privateTypeUrl, newKeyAllowed);
     // No key format because a public key manager cannot create new keys
-    ensureKeyManagerInsertable(publicTypeUrl, Collections.emptyMap(), false);
+    ensureKeyManagerInsertable(publicTypeUrl, false);
 
-    if (!keyManagerRegistry.get().typeUrlExists(privateTypeUrl)) {
-      keyDeriverMap.put(privateTypeUrl, createDeriverFor(privateKeyTypeManager));
-      if (newKeyAllowed) {
-        registerNamedParameters(privateKeyTypeManager.keyFactory().namedParameters());
-      }
-    }
     newKeyAllowedMap.put(privateTypeUrl, newKeyAllowed);
     newKeyAllowedMap.put(publicTypeUrl, false);
 
     keyManagerRegistry.set(newKeyManagerRegistry);
-  }
-
-  private static void registerNamedParameters(Map<String, Parameters> namedParameters)
-      throws GeneralSecurityException {
-    for (Map.Entry<String, Parameters> entry : namedParameters.entrySet()) {
-      parametersMap.put(entry.getKey(), entry.getValue());
-    }
   }
 
   /**
@@ -595,28 +524,6 @@ public final class Registry {
     } else {
       throw new GeneralSecurityException("newKey-operation not permitted for key type " + typeUrl);
     }
-  }
-
-  /**
-   * Derives a key, using the given {@code keyTemplate}, with the randomness as provided by the
-   * second argument.
-   *
-   * <p>This method is on purpose not in the public interface. Calling it twice using different key
-   * templates and the same randomness can completely destroy any security in a system, so we
-   * prevent this by making it accessible only to safe call sites.
-   *
-   * <p>This functions ignores {@code keyTemplate.getOutputPrefix()}.
-   */
-  static synchronized KeyData deriveKey(
-      com.google.crypto.tink.proto.KeyTemplate keyTemplate, InputStream randomStream)
-      throws GeneralSecurityException {
-    String typeUrl = keyTemplate.getTypeUrl();
-    if (!keyDeriverMap.containsKey(typeUrl)) {
-      throw new GeneralSecurityException(
-          "No keymanager registered or key manager cannot derive keys for " + typeUrl);
-    }
-    KeyDataDeriver deriver = keyDeriverMap.get(typeUrl);
-    return deriver.deriveKeyData(keyTemplate.getValue(), randomStream);
   }
 
   /**
@@ -785,15 +692,7 @@ public final class Registry {
    * @since 1.6.0
    */
   public static synchronized List<String> keyTemplates() {
-    List<String> results = new ArrayList<>();
-    results.addAll(parametersMap.keySet());
-
-    return Collections.unmodifiableList(results);
-  }
-
-  /** Internal API that returns an unmodifiable map of registered key templates and their names. */
-  static synchronized Map<String, Parameters> parametersMap() {
-    return Collections.unmodifiableMap(parametersMap);
+    return MutableParametersRegistry.globalInstance().getNames();
   }
 
   /**

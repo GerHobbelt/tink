@@ -21,11 +21,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assume.assumeFalse;
 
-import com.google.crypto.tink.CleartextKeysetHandle;
+import com.google.crypto.tink.InsecureSecretKeyAccess;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.PublicKeySign;
+import com.google.crypto.tink.TinkProtoKeysetFormat;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.proto.JwtRsaSsaPssAlgorithm;
 import com.google.crypto.tink.proto.JwtRsaSsaPssKeyFormat;
@@ -657,24 +658,33 @@ public class JwtRsaSsaPssSignKeyManagerTest {
   }
 
   /* Create a new keyset handle with the "custom_kid" value set. */
-  private KeysetHandle withCustomKid(KeysetHandle keysetHandle, String customKid)
-      throws Exception {
-    Keyset keyset = CleartextKeysetHandle.getKeyset(keysetHandle);
-    JwtRsaSsaPssPrivateKey privateKey =
-        JwtRsaSsaPssPrivateKey.parseFrom(
-            keyset.getKey(0).getKeyData().getValue(), ExtensionRegistryLite.getEmptyRegistry());
-    JwtRsaSsaPssPublicKey publicKeyWithKid =
-        privateKey.getPublicKey().toBuilder()
-            .setCustomKid(CustomKid.newBuilder().setValue(customKid).build())
+  private KeysetHandle withCustomKid(KeysetHandle keysetHandle, String customKid) throws Exception {
+    com.google.crypto.tink.jwt.JwtRsaSsaPssPrivateKey originalPrivateKey =
+        (com.google.crypto.tink.jwt.JwtRsaSsaPssPrivateKey) keysetHandle.getAt(0).getKey();
+    JwtRsaSsaPssParameters customKidParameters =
+        JwtRsaSsaPssParameters.builder()
+            .setAlgorithm(originalPrivateKey.getParameters().getAlgorithm())
+            .setModulusSizeBits(originalPrivateKey.getParameters().getModulusSizeBits())
+            .setKidStrategy(JwtRsaSsaPssParameters.KidStrategy.CUSTOM)
             .build();
-    JwtRsaSsaPssPrivateKey privateKeyWithKid =
-        privateKey.toBuilder().setPublicKey(publicKeyWithKid).build();
-    KeyData keyDataWithKid =
-        keyset.getKey(0).getKeyData().toBuilder()
-            .setValue(privateKeyWithKid.toByteString())
+    com.google.crypto.tink.jwt.JwtRsaSsaPssPublicKey customKidPublicKey =
+        com.google.crypto.tink.jwt.JwtRsaSsaPssPublicKey.builder()
+            .setParameters(customKidParameters)
+            .setModulus(originalPrivateKey.getPublicKey().getModulus())
+            .setCustomKid(customKid)
             .build();
-    Keyset.Key keyWithKid = keyset.getKey(0).toBuilder().setKeyData(keyDataWithKid).build();
-    return CleartextKeysetHandle.fromKeyset(keyset.toBuilder().setKey(0, keyWithKid).build());
+    com.google.crypto.tink.jwt.JwtRsaSsaPssPrivateKey customKidPrivateKey =
+        com.google.crypto.tink.jwt.JwtRsaSsaPssPrivateKey.builder()
+            .setPublicKey(customKidPublicKey)
+            .setPrimes(originalPrivateKey.getPrimeP(), originalPrivateKey.getPrimeQ())
+            .setPrivateExponent(originalPrivateKey.getPrivateExponent())
+            .setPrimeExponents(
+                originalPrivateKey.getPrimeExponentP(), originalPrivateKey.getPrimeExponentQ())
+            .setCrtCoefficient(originalPrivateKey.getCrtCoefficient())
+            .build();
+    return KeysetHandle.newBuilder()
+        .addEntry(KeysetHandle.importKey(customKidPrivateKey).makePrimary().withRandomId())
+        .build();
   }
 
   @Test
@@ -739,13 +749,17 @@ public class JwtRsaSsaPssSignKeyManagerTest {
   }
 
   @Test
-  public void signWithTinkKeyAndCustomKid_fails() throws Exception {
+  public void getPrimitiveWithTinkKeyAndCustomKid_fails() throws Exception {
     assumeFalse(TestUtil.isTsan()); // KeysetHandle.generateNew is too slow in Tsan.
     KeyTemplate template = KeyTemplates.get("JWT_PS256_2048_F4");
     KeysetHandle handle = KeysetHandle.generateNew(template);
 
-    // Create a new handle with the "kid" value set.
-    Keyset keyset = CleartextKeysetHandle.getKeyset(handle);
+    // Create a serialized keyset with one key that has output prefix type TINK and has customKid
+    // set.
+    Keyset keyset =
+        Keyset.parseFrom(
+            TinkProtoKeysetFormat.serializeKeyset(handle, InsecureSecretKeyAccess.get()),
+            ExtensionRegistryLite.getEmptyRegistry());
     JwtRsaSsaPssPrivateKey privateKey =
         JwtRsaSsaPssPrivateKey.parseFrom(
             keyset.getKey(0).getKeyData().getValue(), ExtensionRegistryLite.getEmptyRegistry());
@@ -763,8 +777,10 @@ public class JwtRsaSsaPssSignKeyManagerTest {
             .setValue(privateKeyWithKid.toByteString())
             .build();
     Keyset.Key keyWithKid = keyset.getKey(0).toBuilder().setKeyData(keyDataWithKid).build();
+    byte[] serializedKeyset = keyset.toBuilder().setKey(0, keyWithKid).build().toByteArray();
+    // Currently, parseKeyset does not do any validation. (See b/302468954).
     KeysetHandle handleWithKid =
-        CleartextKeysetHandle.fromKeyset(keyset.toBuilder().setKey(0, keyWithKid).build());
+        TinkProtoKeysetFormat.parseKeyset(serializedKeyset, InsecureSecretKeyAccess.get());
 
     assertThrows(
         GeneralSecurityException.class, () -> handleWithKid.getPrimitive(JwtPublicKeySign.class));

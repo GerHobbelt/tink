@@ -17,23 +17,25 @@
 package com.google.crypto.tink.aead;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import com.google.crypto.tink.Aead;
+import com.google.crypto.tink.InsecureSecretKeyAccess;
+import com.google.crypto.tink.Key;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.SlowInputStream;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
 import com.google.crypto.tink.proto.XChaCha20Poly1305Key;
 import com.google.crypto.tink.proto.XChaCha20Poly1305KeyFormat;
 import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.subtle.Random;
 import com.google.crypto.tink.subtle.XChaCha20Poly1305;
+import com.google.crypto.tink.util.SecretBytes;
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.security.GeneralSecurityException;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.Before;
@@ -102,70 +104,6 @@ public class XChaCha20Poly1305KeyManagerTest {
   }
 
   @Test
-  public void testDeriveKey() throws Exception {
-    final int keySize = 32;
-    byte[] keyMaterial = Random.randBytes(100);
-    XChaCha20Poly1305Key key =
-        factory.deriveKey(
-            XChaCha20Poly1305KeyFormat.newBuilder().setVersion(0).build(),
-            new ByteArrayInputStream(keyMaterial));
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(keyMaterial[i]);
-    }
-  }
-
-  @Test
-  public void testDeriveKey_handlesDataFragmentationCorrectly() throws Exception {
-    int keySize = 32;
-    byte randomness = 4;
-    InputStream fragmentedInputStream =
-        new InputStream() {
-          @Override
-          public int read() {
-            return 0;
-          }
-
-          @Override
-          public int read(byte[] b, int off, int len) {
-            b[off] = randomness;
-            return 1;
-          }
-        };
-
-    XChaCha20Poly1305Key key =
-        factory.deriveKey(
-            XChaCha20Poly1305KeyFormat.newBuilder().setVersion(0).build(), fragmentedInputStream);
-
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(randomness);
-    }
-  }
-
-  @Test
-  public void testDeriveKeyNotEnoughRandomness() throws Exception {
-    byte[] keyMaterial = Random.randBytes(10);
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            factory.deriveKey(
-                XChaCha20Poly1305KeyFormat.newBuilder().setVersion(0).build(),
-                new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
-  public void testDeriveKeyWrongVersion() throws Exception {
-    byte[] keyMaterial = Random.randBytes(32);
-    assertThrows(
-        GeneralSecurityException.class,
-        () ->
-            factory.deriveKey(
-                XChaCha20Poly1305KeyFormat.newBuilder().setVersion(1).build(),
-                new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
   public void getPrimitive() throws Exception {
     XChaCha20Poly1305Key key = factory.createKey(XChaCha20Poly1305KeyFormat.getDefaultInstance());
     Aead managerAead = manager.getPrimitive(key, Aead.class);
@@ -209,5 +147,83 @@ public class XChaCha20Poly1305KeyManagerTest {
     assertThat(h.size()).isEqualTo(1);
     assertThat(h.getAt(0).getKey().getParameters())
         .isEqualTo(KeyTemplates.get(templateName).toParameters());
+  }
+
+  @Test
+  public void testCreateKeyFromRandomness_tinkVariant_works() throws Exception {
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35
+        };
+    XChaCha20Poly1305Parameters parameters =
+        XChaCha20Poly1305Parameters.create(XChaCha20Poly1305Parameters.Variant.TINK);
+    com.google.crypto.tink.aead.XChaCha20Poly1305Key key =
+        XChaCha20Poly1305KeyManager.createXChaChaKeyFromRandomness(
+            parameters, new ByteArrayInputStream(keyMaterial), 123, InsecureSecretKeyAccess.get());
+    byte[] truncatedKeyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31
+        };
+
+    Key expectedKey =
+        com.google.crypto.tink.aead.XChaCha20Poly1305Key.create(
+            XChaCha20Poly1305Parameters.Variant.TINK,
+            SecretBytes.copyFrom(truncatedKeyMaterial, InsecureSecretKeyAccess.get()),
+            123);
+    assertTrue(key.equalsKey(expectedKey));
+  }
+
+  @Test
+  public void testCreateKeyFromRandomness_rawVariant_works() throws Exception {
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35
+        };
+    XChaCha20Poly1305Parameters parameters =
+        XChaCha20Poly1305Parameters.create(XChaCha20Poly1305Parameters.Variant.NO_PREFIX);
+    com.google.crypto.tink.aead.XChaCha20Poly1305Key key =
+        XChaCha20Poly1305KeyManager.createXChaChaKeyFromRandomness(
+            parameters, new ByteArrayInputStream(keyMaterial), null, InsecureSecretKeyAccess.get());
+    byte[] truncatedKeyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31
+        };
+
+    Key expectedKey =
+        com.google.crypto.tink.aead.XChaCha20Poly1305Key.create(
+            XChaCha20Poly1305Parameters.Variant.NO_PREFIX,
+            SecretBytes.copyFrom(truncatedKeyMaterial, InsecureSecretKeyAccess.get()),
+            null);
+    assertTrue(key.equalsKey(expectedKey));
+  }
+
+  @Test
+  public void testCreateKeyFromRandomness_slowInputStream_works() throws Exception {
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35
+        };
+    XChaCha20Poly1305Parameters parameters =
+        XChaCha20Poly1305Parameters.create(XChaCha20Poly1305Parameters.Variant.TINK);
+    com.google.crypto.tink.aead.XChaCha20Poly1305Key key =
+        XChaCha20Poly1305KeyManager.createXChaChaKeyFromRandomness(
+            parameters, SlowInputStream.copyFrom(keyMaterial), 1237, InsecureSecretKeyAccess.get());
+    byte[] truncatedKeyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31
+        };
+
+    Key expectedKey =
+        com.google.crypto.tink.aead.XChaCha20Poly1305Key.create(
+            XChaCha20Poly1305Parameters.Variant.TINK,
+            SecretBytes.copyFrom(truncatedKeyMaterial, InsecureSecretKeyAccess.get()),
+            1237);
+    assertTrue(key.equalsKey(expectedKey));
   }
 }

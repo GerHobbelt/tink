@@ -18,29 +18,36 @@ package com.google.crypto.tink.signature;
 
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
+import com.google.crypto.tink.AccessesPartialKey;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.PublicKeySign;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.SecretKeyAccess;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableKeyDerivationRegistry;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
 import com.google.crypto.tink.internal.PrivateKeyTypeManager;
+import com.google.crypto.tink.internal.Util;
 import com.google.crypto.tink.proto.Ed25519KeyFormat;
 import com.google.crypto.tink.proto.Ed25519PrivateKey;
 import com.google.crypto.tink.proto.Ed25519PublicKey;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
 import com.google.crypto.tink.subtle.Ed25519Sign;
 import com.google.crypto.tink.subtle.Validators;
+import com.google.crypto.tink.util.Bytes;
+import com.google.crypto.tink.util.SecretBytes;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /**
  * This instance of {@code KeyManager} generates new {@code Ed25519PrivateKey} keys and produces new
@@ -59,6 +66,11 @@ public final class Ed25519PrivateKeyManager
             return new Ed25519Sign(keyProto.getKeyValue().toByteArray());
           }
         });
+  }
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
   }
 
   @Override
@@ -122,33 +134,32 @@ public final class Ed25519PrivateKeyManager
             .setPublicKey(publicKey)
             .build();
       }
+    };
+  }
 
-      @Override
-      public Ed25519PrivateKey deriveKey(Ed25519KeyFormat format, InputStream inputStream)
-          throws GeneralSecurityException {
-        Validators.validateVersion(format.getVersion(), getVersion());
+  @AccessesPartialKey
+  static com.google.crypto.tink.signature.Ed25519PrivateKey createEd25519KeyFromRandomness(
+      Ed25519Parameters parameters,
+      InputStream stream,
+      @Nullable Integer idRequirement,
+      SecretKeyAccess access)
+      throws GeneralSecurityException {
+    SecretBytes pseudorandomness =
+        Util.readIntoSecretBytes(stream, Ed25519Sign.SECRET_KEY_LEN, access);
+    Ed25519Sign.KeyPair keyPair =
+        Ed25519Sign.KeyPair.newKeyPairFromSeed(pseudorandomness.toByteArray(access));
+    com.google.crypto.tink.signature.Ed25519PublicKey publicKey =
+        com.google.crypto.tink.signature.Ed25519PublicKey.create(
+            parameters.getVariant(), Bytes.copyFrom(keyPair.getPublicKey()), idRequirement);
+    return com.google.crypto.tink.signature.Ed25519PrivateKey.create(
+        publicKey, SecretBytes.copyFrom(keyPair.getPrivateKey(), access));
+  }
 
-        byte[] pseudorandomness = new byte[Ed25519Sign.SECRET_KEY_LEN];
-        try {
-          readFully(inputStream, pseudorandomness);
-          Ed25519Sign.KeyPair keyPair = Ed25519Sign.KeyPair.newKeyPairFromSeed(pseudorandomness);
-          Ed25519PublicKey publicKey =
-              Ed25519PublicKey.newBuilder()
-                  .setVersion(getVersion())
-                  .setKeyValue(ByteString.copyFrom(keyPair.getPublicKey()))
-                  .build();
-          return Ed25519PrivateKey.newBuilder()
-              .setVersion(getVersion())
-              .setKeyValue(ByteString.copyFrom(keyPair.getPrivateKey()))
-              .setPublicKey(publicKey)
-              .build();
-        } catch (IOException e) {
-          throw new GeneralSecurityException("Reading pseudorandomness failed", e);
-        }
-      }
+  @SuppressWarnings("InlineLambdaConstant") // We need a correct Object#equals in registration.
+  private static final MutableKeyDerivationRegistry.InsecureKeyCreator<Ed25519Parameters>
+      KEY_DERIVER = Ed25519PrivateKeyManager::createEd25519KeyFromRandomness;
 
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put("ED25519", Ed25519Parameters.create(Ed25519Parameters.Variant.TINK));
         result.put("ED25519_RAW", Ed25519Parameters.create(Ed25519Parameters.Variant.NO_PREFIX));
@@ -158,8 +169,6 @@ public final class Ed25519PrivateKeyManager
         result.put(
             "ED25519WithRawOutput", Ed25519Parameters.create(Ed25519Parameters.Variant.NO_PREFIX));
         return Collections.unmodifiableMap(result);
-      }
-    };
   }
 
   /**
@@ -170,8 +179,8 @@ public final class Ed25519PrivateKeyManager
     Registry.registerAsymmetricKeyManagers(
         new Ed25519PrivateKeyManager(), new Ed25519PublicKeyManager(), newKeyAllowed);
     Ed25519ProtoSerialization.register();
-    MutableParametersRegistry.globalInstance()
-        .putAll(new Ed25519PrivateKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
+    MutableKeyDerivationRegistry.globalInstance().add(KEY_DERIVER, Ed25519Parameters.class);
   }
 
   /**

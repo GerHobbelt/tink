@@ -18,13 +18,17 @@ package com.google.crypto.tink.aead;
 
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import com.google.crypto.tink.Aead;
+import com.google.crypto.tink.InsecureSecretKeyAccess;
+import com.google.crypto.tink.Key;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.SlowInputStream;
 import com.google.crypto.tink.proto.AesCtrHmacAeadKey;
 import com.google.crypto.tink.proto.AesCtrHmacAeadKeyFormat;
 import com.google.crypto.tink.proto.AesCtrKeyFormat;
@@ -36,10 +40,10 @@ import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
 import com.google.crypto.tink.subtle.EncryptThenAuthenticate;
 import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.subtle.Random;
-import com.google.protobuf.ByteString;
+import com.google.crypto.tink.util.SecretBytes;
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.security.GeneralSecurityException;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.Before;
@@ -101,21 +105,6 @@ public class AesCtrHmacAeadKeyManagerTest {
         .setHmacKeyFormat(createHmacKeyFormat());
   }
 
-  private static AesCtrHmacAeadKeyFormat createKeyFormatForKeySize(int keySize) {
-    return AesCtrHmacAeadKeyFormat.newBuilder()
-        .setAesCtrKeyFormat(
-            AesCtrKeyFormat.newBuilder()
-                .setKeySize(keySize)
-                .setParams(AesCtrParams.newBuilder().setIvSize(16))
-                .build())
-        .setHmacKeyFormat(
-            HmacKeyFormat.newBuilder()
-                .setParams(HmacParams.newBuilder().setHash(HashType.SHA256).setTagSize(32).build())
-                .setKeySize(keySize)
-                .build())
-        .build();
-  }
-
   @Test
   public void validateKeyFormat_valid() throws Exception {
     factory.validateKeyFormat(createKeyFormat().build());
@@ -148,142 +137,6 @@ public class AesCtrHmacAeadKeyManagerTest {
             () -> factory.validateKeyFormat(format));
       }
     }
-  }
-
-  @Test
-  public void deriveKey_size32() throws Exception {
-    final int keySize = 32;
-    AesCtrHmacAeadKeyFormat keyFormat = createKeyFormatForKeySize(keySize);
-    byte[] keyMaterial = Random.randBytes(100);
-
-    AesCtrHmacAeadKey key = factory.deriveKey(keyFormat, new ByteArrayInputStream(keyMaterial));
-
-    assertThat(key.getAesCtrKey().getKeyValue()).isNotEqualTo(key.getHmacKey().getKeyValue());
-    assertThat(key.getAesCtrKey().getKeyValue())
-        .isEqualTo(ByteString.copyFrom(keyMaterial, 0, keySize));
-    assertThat(key.getHmacKey().getKeyValue())
-        .isEqualTo(ByteString.copyFrom(keyMaterial, keySize, keySize));
-  }
-
-  @Test
-  public void deriveKey_size16() throws Exception {
-    final int keySize = 16;
-    AesCtrHmacAeadKeyFormat keyFormat = createKeyFormatForKeySize(keySize);
-    byte[] keyMaterial = Random.randBytes(100);
-
-    AesCtrHmacAeadKey key = factory.deriveKey(keyFormat, new ByteArrayInputStream(keyMaterial));
-
-    assertThat(key.getAesCtrKey().getKeyValue()).isNotEqualTo(key.getHmacKey().getKeyValue());
-    assertThat(key.getAesCtrKey().getKeyValue())
-        .isEqualTo(ByteString.copyFrom(keyMaterial, 0, keySize));
-    assertThat(key.getHmacKey().getKeyValue())
-        .isEqualTo(ByteString.copyFrom(keyMaterial, keySize, keySize));
-  }
-
-  @Test
-  public void deriveKey_handlesDataFragmentationCorrectly() throws Exception {
-    int keySize = 32;
-    byte randomness = 4;
-    AesCtrHmacAeadKeyFormat keyFormat = createKeyFormatForKeySize(keySize);
-    InputStream fragmentedInputStream =
-        new InputStream() {
-          @Override
-          public int read() {
-            return 0;
-          }
-
-          @Override
-          // Will fill one byte per each `read` call, see:
-          // google3/third_party/tink/java_src/src/main/java/com/google/crypto/tink/internal/KeyTypeManager.java;l=255;rcl=531814261.
-          public int read(byte[] b, int off, int len) {
-            b[off] = randomness;
-            return 1;
-          }
-        };
-
-    AesCtrHmacAeadKey key = factory.deriveKey(keyFormat, fragmentedInputStream);
-
-    assertThat(key.getAesCtrKey().getKeyValue()).hasSize(keySize);
-    assertThat(key.getHmacKey().getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getAesCtrKey().getKeyValue().byteAt(i)).isEqualTo(randomness);
-      assertThat(key.getHmacKey().getKeyValue().byteAt(i)).isEqualTo(randomness);
-    }
-  }
-
-  @Test
-  public void deriveKey_notEnoughAesCtrKeyMaterial_throws() throws Exception {
-    final int keySize = 32;
-    AesCtrHmacAeadKeyFormat keyFormat = createKeyFormatForKeySize(keySize);
-    byte[] keyMaterial = Random.randBytes(keySize - 1);
-
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.deriveKey(keyFormat, new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
-  public void deriveKey_notEnoughHmacKeyMaterial_throws() throws Exception {
-    final int keySize = 32;
-    AesCtrHmacAeadKeyFormat keyFormat = createKeyFormatForKeySize(keySize);
-    byte[] keyMaterial = Random.randBytes(keySize + keySize - 1);
-
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.deriveKey(keyFormat, new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
-  public void deriveKey_badVersion_throws() throws Exception {
-    final int keySize = 32;
-    AesCtrHmacAeadKeyFormat keyFormat =
-        AesCtrHmacAeadKeyFormat.newBuilder()
-            .setAesCtrKeyFormat(
-                AesCtrKeyFormat.newBuilder()
-                    .setKeySize(keySize)
-                    .setParams(AesCtrParams.newBuilder().setIvSize(16))
-                    .build())
-            .setHmacKeyFormat(
-                HmacKeyFormat.newBuilder()
-                    .setVersion(1)
-                    .setParams(
-                        HmacParams.newBuilder().setHash(HashType.SHA256).setTagSize(32).build())
-                    .setKeySize(keySize)
-                    .build())
-            .build();
-    byte[] keyMaterial = Random.randBytes(keySize + keySize);
-
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.deriveKey(keyFormat, new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
-  public void deriveKey_justEnoughKeyMaterial() throws Exception {
-    final int keySize = 32;
-    AesCtrHmacAeadKeyFormat keyFormat =
-        AesCtrHmacAeadKeyFormat.newBuilder()
-            .setAesCtrKeyFormat(
-                AesCtrKeyFormat.newBuilder()
-                    .setKeySize(keySize)
-                    .setParams(AesCtrParams.newBuilder().setIvSize(16))
-                    .build())
-            .setHmacKeyFormat(
-                HmacKeyFormat.newBuilder()
-                    .setParams(
-                        HmacParams.newBuilder().setHash(HashType.SHA256).setTagSize(32).build())
-                    .setKeySize(keySize)
-                    .build())
-            .build();
-    byte[] keyMaterial = Random.randBytes(keySize + keySize);
-
-    AesCtrHmacAeadKey key = factory.deriveKey(keyFormat, new ByteArrayInputStream(keyMaterial));
-
-    assertThat(key.getAesCtrKey().getKeyValue()).isNotEqualTo(key.getHmacKey().getKeyValue());
-    assertThat(key.getAesCtrKey().getKeyValue())
-        .isEqualTo(ByteString.copyFrom(keyMaterial, 0, keySize));
-    assertThat(key.getHmacKey().getKeyValue())
-        .isEqualTo(ByteString.copyFrom(keyMaterial, keySize, keySize));
   }
 
   @Test
@@ -387,5 +240,77 @@ public class AesCtrHmacAeadKeyManagerTest {
     assertThat(h.size()).isEqualTo(1);
     assertThat(h.getAt(0).getKey().getParameters())
         .isEqualTo(KeyTemplates.get(templateName).toParameters());
+  }
+
+  @Theory
+  public void testCreateKeyFromRandomness(@FromDataPoints("templateNames") String templateName)
+      throws Exception {
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+          47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
+        };
+    AesCtrHmacAeadParameters parameters =
+        (AesCtrHmacAeadParameters) KeyTemplates.get(templateName).toParameters();
+    com.google.crypto.tink.aead.AesCtrHmacAeadKey key =
+        AesCtrHmacAeadKeyManager.createAesCtrHmacAeadKeyFromRandomness(
+            parameters,
+            new ByteArrayInputStream(keyMaterial),
+            parameters.hasIdRequirement() ? 123 : null,
+            InsecureSecretKeyAccess.get());
+    byte[] expectedAesKey = Arrays.copyOf(keyMaterial, parameters.getAesKeySizeBytes());
+    byte[] expectedHmacKey =
+        Arrays.copyOfRange(
+            keyMaterial,
+            parameters.getAesKeySizeBytes(),
+            parameters.getAesKeySizeBytes() + parameters.getHmacKeySizeBytes());
+    Key expectedKey =
+        com.google.crypto.tink.aead.AesCtrHmacAeadKey.builder()
+            .setParameters(parameters)
+            .setIdRequirement(parameters.hasIdRequirement() ? 123 : null)
+            .setAesKeyBytes(SecretBytes.copyFrom(expectedAesKey, InsecureSecretKeyAccess.get()))
+            .setHmacKeyBytes(SecretBytes.copyFrom(expectedHmacKey, InsecureSecretKeyAccess.get()))
+            .build();
+    assertTrue(key.equalsKey(expectedKey));
+  }
+
+  @Test
+  public void testCreateKeyFromRandomness_slowInputStream_works() throws Exception {
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+          47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
+        };
+    AesCtrHmacAeadParameters parameters =
+        AesCtrHmacAeadParameters.builder()
+            .setAesKeySizeBytes(32)
+            .setHmacKeySizeBytes(32)
+            .setIvSizeBytes(16)
+            .setTagSizeBytes(32)
+            .setHashType(AesCtrHmacAeadParameters.HashType.SHA256)
+            .setVariant(AesCtrHmacAeadParameters.Variant.TINK)
+            .build();
+    com.google.crypto.tink.aead.AesCtrHmacAeadKey key =
+        AesCtrHmacAeadKeyManager.createAesCtrHmacAeadKeyFromRandomness(
+            parameters,
+            SlowInputStream.copyFrom(keyMaterial),
+            12347,
+            InsecureSecretKeyAccess.get());
+    byte[] expectedAesKey = Arrays.copyOf(keyMaterial, parameters.getAesKeySizeBytes());
+    byte[] expectedHmacKey =
+        Arrays.copyOfRange(
+            keyMaterial,
+            parameters.getAesKeySizeBytes(),
+            parameters.getAesKeySizeBytes() + parameters.getHmacKeySizeBytes());
+    Key expectedKey =
+        com.google.crypto.tink.aead.AesCtrHmacAeadKey.builder()
+            .setParameters(parameters)
+            .setIdRequirement(12347)
+            .setAesKeyBytes(SecretBytes.copyFrom(expectedAesKey, InsecureSecretKeyAccess.get()))
+            .setHmacKeyBytes(SecretBytes.copyFrom(expectedHmacKey, InsecureSecretKeyAccess.get()))
+            .build();
+    assertTrue(key.equalsKey(expectedKey));
   }
 }

@@ -20,6 +20,7 @@ import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
@@ -104,6 +105,11 @@ public class HkdfPrfKeyManager extends KeyTypeManager<HkdfPrfKey> {
   }
 
   @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  }
+
+  @Override
   public String getKeyType() {
     return "type.googleapis.com/google.crypto.tink.HkdfPrfKey";
   }
@@ -153,14 +159,13 @@ public class HkdfPrfKeyManager extends KeyTypeManager<HkdfPrfKey> {
             .setParams(format.getParams())
             .build();
       }
-
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
-        Map<String, Parameters> result = new HashMap<>();
-        result.put("HKDF_SHA256", PredefinedPrfParameters.HKDF_SHA256);
-        return Collections.unmodifiableMap(result);
-      }
     };
+  }
+
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+    Map<String, Parameters> result = new HashMap<>();
+    result.put("HKDF_SHA256", PredefinedPrfParameters.HKDF_SHA256);
+    return Collections.unmodifiableMap(result);
   }
 
   // We use a somewhat larger minimum key size than usual, because PRFs might be used by many users,
@@ -187,8 +192,7 @@ public class HkdfPrfKeyManager extends KeyTypeManager<HkdfPrfKey> {
     MutablePrimitiveRegistry.globalInstance().registerPrimitiveConstructor(HKDF_PRF_CONSTRUCTOR);
     MutablePrimitiveRegistry.globalInstance()
         .registerPrimitiveConstructor(STREAMING_HKDF_PRF_CONSTRUCTOR);
-    MutableParametersRegistry.globalInstance()
-        .putAll(new HkdfPrfKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
   }
 
   public static String staticKeyType() {

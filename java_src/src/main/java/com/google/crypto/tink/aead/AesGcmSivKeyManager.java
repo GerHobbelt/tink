@@ -18,14 +18,19 @@ package com.google.crypto.tink.aead;
 
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
+import com.google.crypto.tink.AccessesPartialKey;
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.SecretKeyAccess;
 import com.google.crypto.tink.aead.subtle.AesGcmSiv;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableKeyDerivationRegistry;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
+import com.google.crypto.tink.internal.Util;
 import com.google.crypto.tink.proto.AesGcmSivKey;
 import com.google.crypto.tink.proto.AesGcmSivKeyFormat;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
@@ -34,13 +39,13 @@ import com.google.crypto.tink.subtle.Validators;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import javax.annotation.Nullable;
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
 
@@ -58,6 +63,11 @@ public final class AesGcmSivKeyManager extends KeyTypeManager<AesGcmSivKey> {
             return new AesGcmSiv(key.getKeyValue().toByteArray());
           }
         });
+  }
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
   }
 
   @Override
@@ -107,56 +117,56 @@ public final class AesGcmSivKeyManager extends KeyTypeManager<AesGcmSivKey> {
             .setVersion(getVersion())
             .build();
       }
-
-      @Override
-      public AesGcmSivKey deriveKey(AesGcmSivKeyFormat format, InputStream inputStream)
-          throws GeneralSecurityException {
-        Validators.validateVersion(format.getVersion(), getVersion());
-
-        byte[] pseudorandomness = new byte[format.getKeySize()];
-        try {
-          readFully(inputStream, pseudorandomness);
-          return AesGcmSivKey.newBuilder()
-              .setKeyValue(ByteString.copyFrom(pseudorandomness))
-              .setVersion(getVersion())
-              .build();
-        } catch (IOException e) {
-          throw new GeneralSecurityException("Reading pseudorandomness failed", e);
-        }
-      }
-
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
-        Map<String, Parameters> result = new HashMap<>();
-
-        result.put(
-            "AES128_GCM_SIV",
-            AesGcmSivParameters.builder()
-                .setKeySizeBytes(16)
-                .setVariant(AesGcmSivParameters.Variant.TINK)
-                .build());
-        result.put(
-            "AES128_GCM_SIV_RAW",
-            AesGcmSivParameters.builder()
-                .setKeySizeBytes(16)
-                .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
-                .build());
-        result.put(
-            "AES256_GCM_SIV",
-            AesGcmSivParameters.builder()
-                .setKeySizeBytes(32)
-                .setVariant(AesGcmSivParameters.Variant.TINK)
-                .build());
-        result.put(
-            "AES256_GCM_SIV_RAW",
-            AesGcmSivParameters.builder()
-                .setKeySizeBytes(32)
-                .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
-                .build());
-
-        return Collections.unmodifiableMap(result);
-      }
     };
+  }
+
+  @SuppressWarnings("InlineLambdaConstant") // We need a correct Object#equals in registration.
+  private static final MutableKeyDerivationRegistry.InsecureKeyCreator<AesGcmSivParameters>
+      KEY_DERIVER = AesGcmSivKeyManager::createAesGcmSivKeyFromRandomness;
+
+  @AccessesPartialKey
+  static com.google.crypto.tink.aead.AesGcmSivKey createAesGcmSivKeyFromRandomness(
+      AesGcmSivParameters parameters,
+      InputStream stream,
+      @Nullable Integer idRequirement,
+      SecretKeyAccess access)
+      throws GeneralSecurityException {
+    return com.google.crypto.tink.aead.AesGcmSivKey.builder()
+        .setParameters(parameters)
+        .setIdRequirement(idRequirement)
+        .setKeyBytes(Util.readIntoSecretBytes(stream, parameters.getKeySizeBytes(), access))
+        .build();
+  }
+
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+    Map<String, Parameters> result = new HashMap<>();
+
+    result.put(
+        "AES128_GCM_SIV",
+        AesGcmSivParameters.builder()
+            .setKeySizeBytes(16)
+            .setVariant(AesGcmSivParameters.Variant.TINK)
+            .build());
+    result.put(
+        "AES128_GCM_SIV_RAW",
+        AesGcmSivParameters.builder()
+            .setKeySizeBytes(16)
+            .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+            .build());
+    result.put(
+        "AES256_GCM_SIV",
+        AesGcmSivParameters.builder()
+            .setKeySizeBytes(32)
+            .setVariant(AesGcmSivParameters.Variant.TINK)
+            .build());
+    result.put(
+        "AES256_GCM_SIV_RAW",
+        AesGcmSivParameters.builder()
+            .setKeySizeBytes(32)
+            .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+            .build());
+
+    return Collections.unmodifiableMap(result);
   }
 
   private static boolean canUseAesGcmSive() {
@@ -172,8 +182,8 @@ public final class AesGcmSivKeyManager extends KeyTypeManager<AesGcmSivKey> {
     if (canUseAesGcmSive()) {
       Registry.registerKeyManager(new AesGcmSivKeyManager(), newKeyAllowed);
       AesGcmSivProtoSerialization.register();
-      MutableParametersRegistry.globalInstance()
-          .putAll(new AesGcmSivKeyManager().keyFactory().namedParameters());
+      MutableParametersRegistry.globalInstance().putAll(namedParameters());
+      MutableKeyDerivationRegistry.globalInstance().add(KEY_DERIVER, AesGcmSivParameters.class);
     }
   }
 
@@ -256,6 +266,4 @@ public final class AesGcmSivKeyManager extends KeyTypeManager<AesGcmSivKey> {
                     .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
                     .build()));
   }
-
-
 }

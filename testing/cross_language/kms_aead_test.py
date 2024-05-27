@@ -51,16 +51,20 @@ _GCP_UNKNOWN_KEY_URI = (
     'gcp-kms://projects/tink-test-infrastructure/locations/global/'
     'keyRings/unit-and-integration-testing/cryptoKeys/unknown')
 
+_LOCAL_HCVAULT_KEY_URI = 'hcvault://127.0.0.1:8200/transit/keys/testkey'
+
 _KMS_KEY_URI = {
     'GCP': _GCP_KEY_URI,
     'AWS': _AWS_KEY_URI,
+    'HCVAULT': _LOCAL_HCVAULT_KEY_URI,
 }
 
 _DEK_TEMPLATE = utilities.KEY_TEMPLATE['AES128_GCM']
 
 
 def _kms_envelope_aead_templates(
-    kms_services: Sequence[str]) -> Dict[str, tink_pb2.KeyTemplate]:
+    kms_services: Sequence[str],
+) -> Dict[Tuple[str, str], tink_pb2.KeyTemplate]:
   """Generates a map from KMS envelope AEAD template name to key template."""
   kms_key_templates = {}
   for kms_service in kms_services:
@@ -69,13 +73,19 @@ def _kms_envelope_aead_templates(
         aead.aead_key_templates.create_kms_envelope_aead_key_template(
             key_uri, _DEK_TEMPLATE))
     kms_envelope_aead_template_name = '%s_KMS_ENVELOPE_AEAD' % kms_service
-    kms_key_templates[kms_envelope_aead_template_name] = (
-        kms_envelope_aead_key_template)
+    kms_key_templates[(kms_service, kms_envelope_aead_template_name)] = (
+        kms_envelope_aead_key_template
+    )
   return kms_key_templates
 
 
+# Maps from (kms_service, template_name) to template.
 _KMS_ENVELOPE_AEAD_KEY_TEMPLATES = _kms_envelope_aead_templates(['GCP', 'AWS'])
-_SUPPORTED_LANGUAGES_FOR_KMS_ENVELOPE_AEAD = ('python', 'cc', 'go', 'java')
+_SUPPORTED_LANGUAGES_FOR_KMS_ENVELOPE_AEAD = {
+    'GCP': ('python', 'cc', 'go', 'java'),
+    'AWS': ('python', 'cc', 'go', 'java'),
+    'HCVAULT': ('go',),
+}
 
 _SUPPORTED_LANGUAGES_FOR_KMS_AEAD = {
     'AWS': ('python', 'cc', 'go', 'java'),
@@ -163,6 +173,7 @@ class KmsAeadTest(parameterized.TestCase):
         [('cc', 'java'), ('java', 'go'), ('go', 'python'), ('python', 'cc')],
     )
     self.assertEqual(list(_get_lang_tuples([])), [])
+    self.assertEqual(list(_get_lang_tuples(['go'])), [('go', 'go')])
 
   @parameterized.parameters(_kms_aead_test_cases())
   def test_encrypt_decrypt_with_associated_data(
@@ -182,6 +193,14 @@ class KmsAeadTest(parameterized.TestCase):
         decrypt_lang, keyset, aead.Aead)
     output = decrypt_primitive.decrypt(ciphertext, associated_data)
     self.assertEqual(output, plaintext)
+    if kms_service == 'HCVAULT':
+      # TODO(b/303547968): Resolve this.
+      self.assertEqual(
+          decrypt_primitive.decrypt(ciphertext, b'other_associated_data'),
+          plaintext)
+      return
+    with self.assertRaises(tink.TinkError):
+      decrypt_primitive.decrypt(ciphertext, b'other_associated_data')
 
   @parameterized.parameters(_kms_aead_test_cases())
   def test_encrypt_decrypt_with_empty_associated_data(
@@ -200,6 +219,14 @@ class KmsAeadTest(parameterized.TestCase):
         decrypt_lang, keyset, aead.Aead)
     output = decrypt_primitive.decrypt(ciphertext, associated_data)
     self.assertEqual(output, plaintext)
+    if kms_service == 'HCVAULT':
+      # TODO(b/303547968): Resolve this.
+      self.assertEqual(
+          decrypt_primitive.decrypt(ciphertext, b'other_associated_data'),
+          plaintext)
+      return
+    with self.assertRaises(tink.TinkError):
+      decrypt_primitive.decrypt(ciphertext, b'other_associated_data')
 
   @parameterized.parameters(_two_key_uris_test_cases())
   def test_cannot_decrypt_ciphertext_of_other_key_uri(self, lang, key_uri,
@@ -293,20 +320,22 @@ class KmsAeadTest(parameterized.TestCase):
 
 def _kms_envelope_aead_test_cases() -> Iterable[Tuple[str, str, str]]:
   """Yields (KMS Envelope AEAD template names, encrypt lang, decrypt lang)."""
-  for key_template_name in _KMS_ENVELOPE_AEAD_KEY_TEMPLATES:
+  for kms_service, key_template_name in _KMS_ENVELOPE_AEAD_KEY_TEMPLATES:
     # Make sure to test languages that support the pritive used for DEK.
-    supported_langs = _SUPPORTED_LANGUAGES_FOR_KMS_ENVELOPE_AEAD
+    supported_langs = _SUPPORTED_LANGUAGES_FOR_KMS_ENVELOPE_AEAD[kms_service]
     for encrypt_lang, decrypt_lang in _get_lang_tuples(supported_langs):
-      yield (key_template_name, encrypt_lang, decrypt_lang)
+      yield (kms_service, key_template_name, encrypt_lang, decrypt_lang)
 
 
 class KmsEnvelopeAeadTest(parameterized.TestCase):
 
   @parameterized.parameters(_kms_envelope_aead_test_cases())
   def test_encrypt_decrypt_with_associated_data(
-      self, key_template_name, encrypt_lang, decrypt_lang
+      self, kms_service, key_template_name, encrypt_lang, decrypt_lang
   ):
-    key_template = _KMS_ENVELOPE_AEAD_KEY_TEMPLATES[key_template_name]
+    key_template = _KMS_ENVELOPE_AEAD_KEY_TEMPLATES[
+        (kms_service, key_template_name)
+    ]
     # Use the encryption language to generate the keyset proto.
     keyset = testing_servers.new_keyset(encrypt_lang, key_template)
     encrypt_primitive = testing_servers.remote_primitive(
@@ -323,9 +352,11 @@ class KmsEnvelopeAeadTest(parameterized.TestCase):
 
   @parameterized.parameters(_kms_envelope_aead_test_cases())
   def test_encrypt_decrypt_with_empty_associated_data(
-      self, key_template_name, encrypt_lang, decrypt_lang
+      self, kms_service, key_template_name, encrypt_lang, decrypt_lang
   ):
-    key_template = _KMS_ENVELOPE_AEAD_KEY_TEMPLATES[key_template_name]
+    key_template = _KMS_ENVELOPE_AEAD_KEY_TEMPLATES[
+        (kms_service, key_template_name)
+    ]
     # Use the encryption language to generate the keyset proto.
     keyset = testing_servers.new_keyset(encrypt_lang, key_template)
     encrypt_primitive = testing_servers.remote_primitive(
@@ -339,9 +370,12 @@ class KmsEnvelopeAeadTest(parameterized.TestCase):
     self.assertEqual(output, plaintext)
 
   @parameterized.parameters(_kms_envelope_aead_test_cases())
-  def test_decryption_fails_with_wrong_aad(self, key_template_name,
-                                           encrypt_lang, decrypt_lang):
-    key_template = _KMS_ENVELOPE_AEAD_KEY_TEMPLATES[key_template_name]
+  def test_decryption_fails_with_wrong_aad(
+      self, kms_service, key_template_name, encrypt_lang, decrypt_lang
+  ):
+    key_template = _KMS_ENVELOPE_AEAD_KEY_TEMPLATES[
+        (kms_service, key_template_name)
+    ]
     # Use the encryption language to generate the keyset proto.
     keyset = testing_servers.new_keyset(encrypt_lang, key_template)
     encrypt_primitive = testing_servers.remote_primitive(
@@ -351,7 +385,7 @@ class KmsEnvelopeAeadTest(parameterized.TestCase):
     ciphertext = encrypt_primitive.encrypt(plaintext, associated_data)
     decrypt_primitive = testing_servers.remote_primitive(
         decrypt_lang, keyset, aead.Aead)
-    with self.assertRaises(tink.TinkError, msg='decryption failed'):
+    with self.assertRaises(tink.TinkError):
       decrypt_primitive.decrypt(ciphertext, b'wrong aad')
 
 if __name__ == '__main__':

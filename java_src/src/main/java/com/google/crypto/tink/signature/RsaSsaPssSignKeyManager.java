@@ -104,6 +104,11 @@ public final class RsaSsaPssSignKeyManager
   }
 
   @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  }
+
+  @Override
   public String getKeyType() {
     return "type.googleapis.com/google.crypto.tink.RsaSsaPssPrivateKey";
   }
@@ -194,9 +199,10 @@ public final class RsaSsaPssSignKeyManager
             .setCrt(ByteString.copyFrom(privKey.getCrtCoefficient().toByteArray()))
             .build();
       }
+    };
+  }
 
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put(
             "RSA_SSA_PSS_3072_SHA256_F4",
@@ -251,13 +257,6 @@ public final class RsaSsaPssSignKeyManager
             "RSA_SSA_PSS_4096_SHA512_SHA512_64_F4",
             PredefinedSignatureParameters.RSA_SSA_PSS_4096_SHA512_SHA512_64_F4);
         return Collections.unmodifiableMap(result);
-      }
-    };
-  }
-
-  @Override
-  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
-    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_REQUIRES_BORINGCRYPTO;
   }
 
   /**
@@ -268,8 +267,7 @@ public final class RsaSsaPssSignKeyManager
     Registry.registerAsymmetricKeyManagers(
         new RsaSsaPssSignKeyManager(), new RsaSsaPssVerifyKeyManager(), newKeyAllowed);
     RsaSsaPssProtoSerialization.register();
-    MutableParametersRegistry.globalInstance()
-        .putAll(new RsaSsaPssSignKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
   }
 
   /**

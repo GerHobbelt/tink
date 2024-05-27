@@ -22,6 +22,7 @@ import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.PrimitiveFactory;
@@ -64,6 +65,11 @@ public final class AesEaxKeyManager extends KeyTypeManager<AesEaxKey> {
   @Override
   public int getVersion() {
     return 0;
+  }
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
   }
 
   @Override
@@ -111,9 +117,10 @@ public final class AesEaxKeyManager extends KeyTypeManager<AesEaxKey> {
             .setVersion(getVersion())
             .build();
       }
+    };
+  }
 
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put("AES128_EAX", PredefinedAeadParameters.AES128_EAX);
         result.put(
@@ -135,15 +142,12 @@ public final class AesEaxKeyManager extends KeyTypeManager<AesEaxKey> {
                 .build());
 
         return Collections.unmodifiableMap(result);
-      }
-    };
   }
 
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new AesEaxKeyManager(), newKeyAllowed);
     AesEaxProtoSerialization.register();
-    MutableParametersRegistry.globalInstance()
-        .putAll(new AesEaxKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
   }
 
   /**

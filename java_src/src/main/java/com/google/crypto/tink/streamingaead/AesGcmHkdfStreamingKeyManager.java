@@ -18,30 +18,38 @@ package com.google.crypto.tink.streamingaead;
 
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
+import com.google.crypto.tink.AccessesPartialKey;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.SecretKeyAccess;
 import com.google.crypto.tink.StreamingAead;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableKeyDerivationRegistry;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
+import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
+import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.internal.PrimitiveFactory;
+import com.google.crypto.tink.internal.Util;
 import com.google.crypto.tink.proto.AesGcmHkdfStreamingKey;
 import com.google.crypto.tink.proto.AesGcmHkdfStreamingKeyFormat;
 import com.google.crypto.tink.proto.AesGcmHkdfStreamingParams;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
+import com.google.crypto.tink.streamingaead.internal.AesGcmHkdfStreamingProtoSerialization;
 import com.google.crypto.tink.subtle.AesGcmHkdfStreaming;
 import com.google.crypto.tink.subtle.Random;
 import com.google.crypto.tink.subtle.Validators;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /**
  * This key manager generates new {@code AesGcmHkdfStreamingKey} keys and produces new instances of
@@ -67,6 +75,18 @@ public final class AesGcmHkdfStreamingKeyManager extends KeyTypeManager<AesGcmHk
 
   private static final int NONCE_PREFIX_IN_BYTES = 7;
   private static final int TAG_SIZE_IN_BYTES = 16;
+  private static final PrimitiveConstructor<
+          com.google.crypto.tink.streamingaead.AesGcmHkdfStreamingKey, StreamingAead>
+      AES_GCM_HKDF_STREAMING_AEAD_PRIMITIVE_CONSTRUCTOR =
+          PrimitiveConstructor.create(
+              AesGcmHkdfStreaming::create,
+              com.google.crypto.tink.streamingaead.AesGcmHkdfStreamingKey.class,
+              StreamingAead.class);
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  }
 
   @Override
   public String getKeyType() {
@@ -124,35 +144,33 @@ public final class AesGcmHkdfStreamingKeyManager extends KeyTypeManager<AesGcmHk
             .setVersion(getVersion())
             .build();
       }
+    };
+  }
 
-      @Override
-      public AesGcmHkdfStreamingKey deriveKey(
-          AesGcmHkdfStreamingKeyFormat format, InputStream inputStream)
+  @SuppressWarnings("InlineLambdaConstant") // We need a correct Object#equals in registration.
+  private static final MutableKeyDerivationRegistry.InsecureKeyCreator<
+          AesGcmHkdfStreamingParameters>
+      KEY_DERIVER = AesGcmHkdfStreamingKeyManager::createAesGcmHkdfStreamingKeyFromRandomness;
+
+  @AccessesPartialKey
+  static com.google.crypto.tink.streamingaead.AesGcmHkdfStreamingKey
+      createAesGcmHkdfStreamingKeyFromRandomness(
+          AesGcmHkdfStreamingParameters parameters,
+          InputStream stream,
+          @Nullable Integer idRequirement,
+          SecretKeyAccess access)
           throws GeneralSecurityException {
-        Validators.validateVersion(format.getVersion(), getVersion());
-        byte[] pseudorandomness = new byte[format.getKeySize()];
-        try {
-          readFully(inputStream, pseudorandomness);
-          return AesGcmHkdfStreamingKey.newBuilder()
-              .setKeyValue(ByteString.copyFrom(pseudorandomness))
-              .setParams(format.getParams())
-              .setVersion(getVersion())
-              .build();
-        } catch (IOException e) {
-          throw new GeneralSecurityException("Reading pseudorandomness failed", e);
-        }
-      }
+    return com.google.crypto.tink.streamingaead.AesGcmHkdfStreamingKey.create(
+        parameters, Util.readIntoSecretBytes(stream, parameters.getKeySizeBytes(), access));
+  }
 
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put("AES128_GCM_HKDF_4KB", PredefinedStreamingAeadParameters.AES128_GCM_HKDF_4KB);
         result.put("AES128_GCM_HKDF_1MB", PredefinedStreamingAeadParameters.AES128_GCM_HKDF_1MB);
         result.put("AES256_GCM_HKDF_4KB", PredefinedStreamingAeadParameters.AES256_GCM_HKDF_4KB);
         result.put("AES256_GCM_HKDF_1MB", PredefinedStreamingAeadParameters.AES256_GCM_HKDF_1MB);
         return Collections.unmodifiableMap(result);
-      }
-    };
   }
 
   private static void validateParams(AesGcmHkdfStreamingParams params)
@@ -174,8 +192,11 @@ public final class AesGcmHkdfStreamingKeyManager extends KeyTypeManager<AesGcmHk
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new AesGcmHkdfStreamingKeyManager(), newKeyAllowed);
     AesGcmHkdfStreamingProtoSerialization.register();
-    MutableParametersRegistry.globalInstance()
-        .putAll(new AesGcmHkdfStreamingKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
+    MutableKeyDerivationRegistry.globalInstance()
+        .add(KEY_DERIVER, AesGcmHkdfStreamingParameters.class);
+    MutablePrimitiveRegistry.globalInstance()
+        .registerPrimitiveConstructor(AES_GCM_HKDF_STREAMING_AEAD_PRIMITIVE_CONSTRUCTOR);
   }
 
   /**

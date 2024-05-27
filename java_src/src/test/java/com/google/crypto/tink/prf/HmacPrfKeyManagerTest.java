@@ -18,13 +18,17 @@ package com.google.crypto.tink.prf;
 
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
+import com.google.crypto.tink.InsecureSecretKeyAccess;
+import com.google.crypto.tink.Key;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.internal.KeyTypeManager;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
+import com.google.crypto.tink.internal.SlowInputStream;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.HmacPrfKey;
 import com.google.crypto.tink.proto.HmacPrfKeyFormat;
@@ -35,8 +39,8 @@ import com.google.crypto.tink.subtle.Random;
 import com.google.crypto.tink.util.SecretBytes;
 import com.google.protobuf.ByteString;
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.security.GeneralSecurityException;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
 import javax.crypto.spec.SecretKeySpec;
@@ -174,105 +178,6 @@ public class HmacPrfKeyManagerTest {
   }
 
   @Test
-  public void testDeriveKey_size27() throws Exception {
-    final int keySize = 27;
-
-    byte[] keyMaterial = Random.randBytes(100);
-    HmacPrfParams params = HmacPrfParams.newBuilder().setHash(HashType.SHA256).build();
-    HmacPrfKey key =
-        factory.deriveKey(
-            HmacPrfKeyFormat.newBuilder()
-                .setVersion(0)
-                .setParams(params)
-                .setKeySize(keySize)
-                .build(),
-            new ByteArrayInputStream(keyMaterial));
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(keyMaterial[i]);
-    }
-    assertThat(key.getParams()).isEqualTo(params);
-  }
-
-  @Test
-  public void testDeriveKey_handlesDataFragmentationCorrectly() throws Exception {
-    int keySize = 32;
-    byte randomness = 4;
-    InputStream fragmentedInputStream =
-        new InputStream() {
-          @Override
-          public int read() {
-            return 0;
-          }
-
-          @Override
-          public int read(byte[] b, int off, int len) {
-            b[off] = randomness;
-            return 1;
-          }
-        };
-
-    HmacPrfParams params = HmacPrfParams.newBuilder().setHash(HashType.SHA256).build();
-    HmacPrfKey key =
-        factory.deriveKey(
-            HmacPrfKeyFormat.newBuilder()
-                .setVersion(0)
-                .setParams(params)
-                .setKeySize(keySize)
-                .build(),
-            fragmentedInputStream);
-
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(randomness);
-    }
-  }
-
-  @Test
-  public void testDeriveKey_notEnoughKeyMaterial_throws() throws Exception {
-    byte[] keyMaterial = Random.randBytes(31);
-    HmacPrfParams params = HmacPrfParams.newBuilder().setHash(HashType.SHA256).build();
-    HmacPrfKeyFormat format =
-        HmacPrfKeyFormat.newBuilder().setVersion(0).setParams(params).setKeySize(32).build();
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.deriveKey(format, new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
-  public void testDeriveKey_badVersion_throws() throws Exception {
-    final int keySize = 32;
-
-    byte[] keyMaterial = Random.randBytes(100);
-    HmacPrfParams params = HmacPrfParams.newBuilder().setHash(HashType.SHA256).build();
-    HmacPrfKeyFormat format =
-        HmacPrfKeyFormat.newBuilder().setVersion(1).setParams(params).setKeySize(keySize).build();
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.deriveKey(format, new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
-  public void testDeriveKey_justEnoughKeyMaterial() throws Exception {
-    final int keySize = 32;
-
-    byte[] keyMaterial = Random.randBytes(keySize);
-    HmacPrfParams params = HmacPrfParams.newBuilder().setHash(HashType.SHA256).build();
-    HmacPrfKey key =
-        factory.deriveKey(
-            HmacPrfKeyFormat.newBuilder()
-                .setVersion(0)
-                .setParams(params)
-                .setKeySize(keySize)
-                .build(),
-            new ByteArrayInputStream(keyMaterial));
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(keyMaterial[i]);
-    }
-  }
-
-  @Test
   public void testHmacSha256Template() throws Exception {
     KeyTemplate template = HmacPrfKeyManager.hmacSha256Template();
     assertThat(template.toParameters())
@@ -330,5 +235,53 @@ public class HmacPrfKeyManagerTest {
                 Prf.class);
 
     assertThat(prf).isInstanceOf(PrfHmacJce.class);
+  }
+
+  @Theory
+  public void testCreateKeyFromRandomness(@FromDataPoints("templateNames") String templateName)
+      throws Exception {
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+          47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
+        };
+    HmacPrfParameters parameters =
+        (HmacPrfParameters) KeyTemplates.get(templateName).toParameters();
+    com.google.crypto.tink.prf.HmacPrfKey key =
+        HmacPrfKeyManager.createHmacKeyFromRandomness(
+            parameters, new ByteArrayInputStream(keyMaterial), null, InsecureSecretKeyAccess.get());
+    byte[] expectedKeyBytes = Arrays.copyOf(keyMaterial, parameters.getKeySizeBytes());
+    Key expectedKey =
+        com.google.crypto.tink.prf.HmacPrfKey.builder()
+            .setParameters(parameters)
+            .setKeyBytes(SecretBytes.copyFrom(expectedKeyBytes, InsecureSecretKeyAccess.get()))
+            .build();
+    assertTrue(key.equalsKey(expectedKey));
+  }
+
+  @Test
+  public void testCreateKeyFromRandomness_slowInputStream_works() throws Exception {
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+          47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
+        };
+    HmacPrfParameters parameters =
+        HmacPrfParameters.builder()
+            .setKeySizeBytes(64)
+            .setHashType(HmacPrfParameters.HashType.SHA512)
+            .build();
+    com.google.crypto.tink.prf.HmacPrfKey key =
+        HmacPrfKeyManager.createHmacKeyFromRandomness(
+            parameters, SlowInputStream.copyFrom(keyMaterial), null, InsecureSecretKeyAccess.get());
+    byte[] expectedKeyBytes = Arrays.copyOf(keyMaterial, parameters.getKeySizeBytes());
+    Key expectedKey =
+        com.google.crypto.tink.prf.HmacPrfKey.builder()
+            .setParameters(parameters)
+            .setKeyBytes(SecretBytes.copyFrom(expectedKeyBytes, InsecureSecretKeyAccess.get()))
+            .build();
+    assertTrue(key.equalsKey(expectedKey));
   }
 }

@@ -63,6 +63,11 @@ class RsaSsaPssVerifyKeyManager extends KeyTypeManager<RsaSsaPssPublicKey> {
   }
 
   @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  }
+
+  @Override
   public String getKeyType() {
     return "type.googleapis.com/google.crypto.tink.RsaSsaPssPublicKey";
   }
@@ -88,10 +93,5 @@ class RsaSsaPssVerifyKeyManager extends KeyTypeManager<RsaSsaPssPublicKey> {
     Validators.validateRsaModulusSize(new BigInteger(1, pubKey.getN().toByteArray()).bitLength());
     Validators.validateRsaPublicExponent(new BigInteger(1, pubKey.getE().toByteArray()));
     SigUtil.validateRsaSsaPssParams(pubKey.getParams());
-  }
-
-  @Override
-  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
-    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_REQUIRES_BORINGCRYPTO;
   }
 }

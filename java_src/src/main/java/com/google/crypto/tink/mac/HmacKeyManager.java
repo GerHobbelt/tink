@@ -18,16 +18,20 @@ package com.google.crypto.tink.mac;
 
 import static com.google.crypto.tink.internal.TinkBugException.exceptionIsBug;
 
+import com.google.crypto.tink.AccessesPartialKey;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.Mac;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.SecretKeyAccess;
 import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.MutableKeyDerivationRegistry;
 import com.google.crypto.tink.internal.MutableParametersRegistry;
 import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
 import com.google.crypto.tink.internal.PrimitiveConstructor;
 import com.google.crypto.tink.internal.PrimitiveFactory;
+import com.google.crypto.tink.internal.Util;
 import com.google.crypto.tink.mac.internal.ChunkedHmacImpl;
 import com.google.crypto.tink.mac.internal.HmacProtoSerialization;
 import com.google.crypto.tink.proto.HashType;
@@ -42,12 +46,12 @@ import com.google.crypto.tink.subtle.Validators;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import javax.annotation.Nullable;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
@@ -187,26 +191,28 @@ public final class HmacKeyManager extends KeyTypeManager<HmacKey> {
             .setKeyValue(ByteString.copyFrom(Random.randBytes(format.getKeySize())))
             .build();
       }
+    };
+  }
 
-      @Override
-      public HmacKey deriveKey(HmacKeyFormat format, InputStream inputStream)
-          throws GeneralSecurityException {
-        Validators.validateVersion(format.getVersion(), getVersion());
-        byte[] pseudorandomness = new byte[format.getKeySize()];
-        try {
-          readFully(inputStream, pseudorandomness);
-          return HmacKey.newBuilder()
-              .setVersion(getVersion())
-              .setParams(format.getParams())
-              .setKeyValue(ByteString.copyFrom(pseudorandomness))
-              .build();
-        } catch (IOException e) {
-          throw new GeneralSecurityException("Reading pseudorandomness failed", e);
-        }
-      }
+  @SuppressWarnings("InlineLambdaConstant") // We need a correct Object#equals in registration.
+  private static final MutableKeyDerivationRegistry.InsecureKeyCreator<HmacParameters> KEY_DERIVER =
+      HmacKeyManager::createHmacKeyFromRandomness;
 
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  @AccessesPartialKey
+  static com.google.crypto.tink.mac.HmacKey createHmacKeyFromRandomness(
+      HmacParameters parameters,
+      InputStream stream,
+      @Nullable Integer idRequirement,
+      SecretKeyAccess access)
+      throws GeneralSecurityException {
+    return com.google.crypto.tink.mac.HmacKey.builder()
+        .setParameters(parameters)
+        .setKeyBytes(Util.readIntoSecretBytes(stream, parameters.getKeySizeBytes(), access))
+        .setIdRequirement(idRequirement)
+        .build();
+  }
+
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put("HMAC_SHA256_128BITTAG", PredefinedMacParameters.HMAC_SHA256_128BITTAG);
         result.put(
@@ -275,8 +281,6 @@ public final class HmacKeyManager extends KeyTypeManager<HmacKey> {
                 .setHashType(HmacParameters.HashType.SHA512)
                 .build());
         return Collections.unmodifiableMap(result);
-      }
-    };
   }
 
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
@@ -286,8 +290,8 @@ public final class HmacKeyManager extends KeyTypeManager<HmacKey> {
         .registerPrimitiveConstructor(CHUNKED_MAC_PRIMITIVE_CONSTRUCTOR);
     MutablePrimitiveRegistry.globalInstance()
         .registerPrimitiveConstructor(MAC_PRIMITIVE_CONSTRUCTOR);
-    MutableParametersRegistry.globalInstance()
-        .putAll(new HmacKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
+    MutableKeyDerivationRegistry.globalInstance().add(KEY_DERIVER, HmacParameters.class);
   }
 
   /**

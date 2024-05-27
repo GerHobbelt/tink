@@ -16,13 +16,19 @@
 
 package com.google.crypto.tink.keyderivation.internal;
 
+import com.google.crypto.tink.InsecureSecretKeyAccess;
+import com.google.crypto.tink.Key;
 import com.google.crypto.tink.Registry;
+import com.google.crypto.tink.config.internal.TinkFipsUtil;
 import com.google.crypto.tink.internal.KeyTypeManager;
-import com.google.crypto.tink.internal.MutableParametersRegistry;
-import com.google.crypto.tink.internal.PrimitiveFactory;
-import com.google.crypto.tink.keyderivation.KeysetDeriver;
+import com.google.crypto.tink.internal.MutablePrimitiveRegistry;
+import com.google.crypto.tink.internal.MutableSerializationRegistry;
+import com.google.crypto.tink.internal.PrimitiveConstructor;
+import com.google.crypto.tink.internal.ProtoKeySerialization;
+import com.google.crypto.tink.keyderivation.PrfBasedKeyDerivationKey;
 import com.google.crypto.tink.proto.KeyData;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
+import com.google.crypto.tink.proto.OutputPrefixType;
 import com.google.crypto.tink.proto.PrfBasedDeriverKey;
 import com.google.crypto.tink.proto.PrfBasedDeriverKeyFormat;
 import com.google.crypto.tink.subtle.Validators;
@@ -33,16 +39,18 @@ import java.security.GeneralSecurityException;
 
 /** {@link com.google.crypto.tink.internal.KeyTypeManager} for {@link PrfBasedDeriverKey}. */
 public final class PrfBasedDeriverKeyManager extends KeyTypeManager<PrfBasedDeriverKey> {
+  private static final PrimitiveConstructor<PrfBasedKeyDerivationKey, KeyDeriver>
+      PRIMITIVE_CONSTRUCTOR =
+          PrimitiveConstructor.create(
+              PrfBasedKeyDeriver::create, PrfBasedKeyDerivationKey.class, KeyDeriver.class);
+
   public PrfBasedDeriverKeyManager() {
-    super(
-        PrfBasedDeriverKey.class,
-        new PrimitiveFactory<KeysetDeriver, PrfBasedDeriverKey>(KeysetDeriver.class) {
-          @Override
-          public KeysetDeriver getPrimitive(PrfBasedDeriverKey key)
-              throws GeneralSecurityException {
-            return PrfBasedDeriver.create(key.getPrfKey(), key.getParams().getDerivedKeyTemplate());
-          }
-        });
+    super(PrfBasedDeriverKey.class);
+  }
+
+  @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
   }
 
   @Override
@@ -101,23 +109,39 @@ public final class PrfBasedDeriverKeyManager extends KeyTypeManager<PrfBasedDeri
       @Override
       public PrfBasedDeriverKey createKey(PrfBasedDeriverKeyFormat format)
           throws GeneralSecurityException {
-        KeyData prfKey = Registry.newKeyData(format.getPrfKeyTemplate());
-        // Verify {@code format} is derivable.
-        PrfBasedDeriver unused =
-            PrfBasedDeriver.create(prfKey, format.getParams().getDerivedKeyTemplate());
-        return PrfBasedDeriverKey.newBuilder()
-            .setVersion(getVersion())
-            .setParams(format.getParams())
-            .setPrfKey(prfKey)
-            .build();
+        KeyData prfKeyData = Registry.newKeyData(format.getPrfKeyTemplate());
+        PrfBasedDeriverKey result =
+            PrfBasedDeriverKey.newBuilder()
+                .setVersion(getVersion())
+                .setParams(format.getParams())
+                .setPrfKey(prfKeyData)
+                .build();
+        OutputPrefixType outputPrefixType =
+            result.getParams().getDerivedKeyTemplate().getOutputPrefixType();
+        ProtoKeySerialization serialization =
+            ProtoKeySerialization.create(
+                "type.googleapis.com/google.crypto.tink.PrfBasedDeriverKey",
+                result.toByteString(),
+                KeyMaterialType.SYMMETRIC,
+                result.getParams().getDerivedKeyTemplate().getOutputPrefixType(),
+                outputPrefixType.equals(OutputPrefixType.RAW) ? null : 0);
+        Key key =
+            MutableSerializationRegistry.globalInstance()
+                .parseKey(serialization, InsecureSecretKeyAccess.get());
+        if (!(key instanceof PrfBasedKeyDerivationKey)) {
+          throw new GeneralSecurityException(
+              "Key parsing returned unexpected key type: " + key.getClass());
+        }
+        Object unused = PrfBasedKeyDeriver.create((PrfBasedKeyDerivationKey) key);
+        return result;
       }
     };
   }
 
   public static void register(boolean newKeyAllowed) throws GeneralSecurityException {
     Registry.registerKeyManager(new PrfBasedDeriverKeyManager(), newKeyAllowed);
+    MutablePrimitiveRegistry.globalInstance().registerPrimitiveConstructor(PRIMITIVE_CONSTRUCTOR);
+
     PrfBasedKeyDerivationKeyProtoSerialization.register();
-    MutableParametersRegistry.globalInstance()
-        .putAll(new PrfBasedDeriverKeyManager().keyFactory().namedParameters());
   }
 }

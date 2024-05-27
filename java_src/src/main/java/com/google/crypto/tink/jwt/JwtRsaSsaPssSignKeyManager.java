@@ -135,6 +135,11 @@ public final class JwtRsaSsaPssSignKeyManager
   }
 
   @Override
+  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
+    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_NOT_FIPS;
+  }
+
+  @Override
   public String getKeyType() {
     return "type.googleapis.com/google.crypto.tink.JwtRsaSsaPssPrivateKey";
   }
@@ -221,14 +226,14 @@ public final class JwtRsaSsaPssSignKeyManager
             .setCrt(ByteString.copyFrom(privKey.getCrtCoefficient().toByteArray()))
             .build();
       }
+    };
+  }
 
-      /**
-       * List of default templates to generate tokens with algorithms "PS256", "PS384" or "PS512".
-       * Use the template with the "_RAW" suffix if you want to generate tokens without a "kid"
-       * header.
-       */
-      @Override
-      public Map<String, Parameters> namedParameters() throws GeneralSecurityException {
+  /**
+   * List of default templates to generate tokens with algorithms "PS256", "PS384" or "PS512". Use
+   * the template with the "_RAW" suffix if you want to generate tokens without a "kid" header.
+   */
+  private static Map<String, Parameters> namedParameters() throws GeneralSecurityException {
         Map<String, Parameters> result = new HashMap<>();
         result.put(
             "JWT_PS256_2048_F4_RAW",
@@ -295,13 +300,6 @@ public final class JwtRsaSsaPssSignKeyManager
                 .setKidStrategy(JwtRsaSsaPssParameters.KidStrategy.BASE64_ENCODED_KEY_ID)
                 .build());
         return Collections.unmodifiableMap(result);
-      }
-    };
-  }
-
-  @Override
-  public TinkFipsUtil.AlgorithmFipsCompatibility fipsStatus() {
-    return TinkFipsUtil.AlgorithmFipsCompatibility.ALGORITHM_REQUIRES_BORINGCRYPTO;
   }
 
   /**
@@ -312,8 +310,7 @@ public final class JwtRsaSsaPssSignKeyManager
     Registry.registerAsymmetricKeyManagers(
         new JwtRsaSsaPssSignKeyManager(), new JwtRsaSsaPssVerifyKeyManager(), newKeyAllowed);
     JwtRsaSsaPssProtoSerialization.register();
-    MutableParametersRegistry.globalInstance()
-        .putAll(new JwtRsaSsaPssSignKeyManager().keyFactory().namedParameters());
+    MutableParametersRegistry.globalInstance().putAll(namedParameters());
   }
 
 }

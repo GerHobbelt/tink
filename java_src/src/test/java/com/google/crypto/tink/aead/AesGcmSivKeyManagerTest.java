@@ -19,23 +19,28 @@ package com.google.crypto.tink.aead;
 import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import com.google.crypto.tink.Aead;
+import com.google.crypto.tink.InsecureSecretKeyAccess;
+import com.google.crypto.tink.Key;
 import com.google.crypto.tink.KeyTemplate;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.Parameters;
 import com.google.crypto.tink.aead.subtle.AesGcmSiv;
 import com.google.crypto.tink.internal.KeyTypeManager;
+import com.google.crypto.tink.internal.SlowInputStream;
 import com.google.crypto.tink.proto.AesGcmSivKey;
 import com.google.crypto.tink.proto.AesGcmSivKeyFormat;
 import com.google.crypto.tink.proto.KeyData.KeyMaterialType;
 import com.google.crypto.tink.subtle.Hex;
 import com.google.crypto.tink.subtle.Random;
+import com.google.crypto.tink.util.SecretBytes;
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.security.Security;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
 import org.conscrypt.Conscrypt;
@@ -157,102 +162,6 @@ public class AesGcmSivKeyManagerTest {
   }
 
   @Test
-  public void testDeriveKey_size32() throws Exception {
-    final int keySize = 32;
-
-    byte[] keyMaterial = Random.randBytes(100);
-    AesGcmSivKey key =
-        factory.deriveKey(
-            AesGcmSivKeyFormat.newBuilder().setVersion(0).setKeySize(keySize).build(),
-            new ByteArrayInputStream(keyMaterial));
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(keyMaterial[i]);
-    }
-  }
-
-  @Test
-  public void testDeriveKey_size16() throws Exception {
-    final int keySize = 16;
-
-    byte[] keyMaterial = Random.randBytes(100);
-    AesGcmSivKey key =
-        factory.deriveKey(
-            AesGcmSivKeyFormat.newBuilder().setVersion(0).setKeySize(keySize).build(),
-            new ByteArrayInputStream(keyMaterial));
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(keyMaterial[i]);
-    }
-  }
-
-  @Test
-  public void testDeriveKey_handlesDataFragmentationCorrectly() throws Exception {
-    int keySize = 32;
-    byte randomness = 4;
-    InputStream fragmentedInputStream =
-        new InputStream() {
-          @Override
-          public int read() {
-            return 0;
-          }
-
-          @Override
-          public int read(byte[] b, int off, int len) {
-            b[off] = randomness;
-            return 1;
-          }
-        };
-
-    AesGcmSivKey key =
-        factory.deriveKey(
-            AesGcmSivKeyFormat.newBuilder().setVersion(0).setKeySize(keySize).build(),
-            fragmentedInputStream);
-
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(randomness);
-    }
-  }
-
-  @Test
-  public void testDeriveKey_notEnoughKeyMaterial_throws() throws Exception {
-    byte[] keyMaterial = Random.randBytes(31);
-    AesGcmSivKeyFormat format =
-        AesGcmSivKeyFormat.newBuilder().setVersion(0).setKeySize(32).build();
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.deriveKey(format, new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
-  public void testDeriveKey_badVersion_throws() throws Exception {
-    final int keySize = 32;
-
-    byte[] keyMaterial = Random.randBytes(100);
-    AesGcmSivKeyFormat format =
-        AesGcmSivKeyFormat.newBuilder().setVersion(1).setKeySize(keySize).build();
-    assertThrows(
-        GeneralSecurityException.class,
-        () -> factory.deriveKey(format, new ByteArrayInputStream(keyMaterial)));
-  }
-
-  @Test
-  public void testDeriveKey_justEnoughKeyMaterial() throws Exception {
-    final int keySize = 32;
-
-    byte[] keyMaterial = Random.randBytes(32);
-    AesGcmSivKey key =
-        factory.deriveKey(
-            AesGcmSivKeyFormat.newBuilder().setVersion(0).setKeySize(keySize).build(),
-            new ByteArrayInputStream(keyMaterial));
-    assertThat(key.getKeyValue()).hasSize(keySize);
-    for (int i = 0; i < keySize; ++i) {
-      assertThat(key.getKeyValue().byteAt(i)).isEqualTo(keyMaterial[i]);
-    }
-  }
-
-  @Test
   public void testAes128GcmSivTemplate() throws Exception {
     KeyTemplate template = AesGcmSivKeyManager.aes128GcmSivTemplate();
     assertThat(template.toParameters())
@@ -321,5 +230,59 @@ public class AesGcmSivKeyManagerTest {
     assertThat(h.size()).isEqualTo(1);
     assertThat(h.getAt(0).getKey().getParameters())
         .isEqualTo(KeyTemplates.get(templateName).toParameters());
+  }
+
+  @Theory
+  public void testCreateKeyFromRandomness(@FromDataPoints("templateNames") String templateName)
+      throws Exception {
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35
+        };
+    AesGcmSivParameters parameters =
+        (AesGcmSivParameters) KeyTemplates.get(templateName).toParameters();
+    com.google.crypto.tink.aead.AesGcmSivKey key =
+        AesGcmSivKeyManager.createAesGcmSivKeyFromRandomness(
+            parameters,
+            new ByteArrayInputStream(keyMaterial),
+            parameters.hasIdRequirement() ? 123 : null,
+            InsecureSecretKeyAccess.get());
+    byte[] truncatedKeyMaterial = Arrays.copyOf(keyMaterial, parameters.getKeySizeBytes());
+    Key expectedKey =
+        com.google.crypto.tink.aead.AesGcmSivKey.builder()
+            .setParameters(parameters)
+            .setIdRequirement(parameters.hasIdRequirement() ? 123 : null)
+            .setKeyBytes(SecretBytes.copyFrom(truncatedKeyMaterial, InsecureSecretKeyAccess.get()))
+            .build();
+    assertTrue(key.equalsKey(expectedKey));
+  }
+
+  @Test
+  public void testCreateKeyFromRandomness_slowInputStream_works() throws Exception {
+    AesGcmSivParameters parameters =
+        AesGcmSivParameters.builder()
+            .setKeySizeBytes(32)
+            .setVariant(AesGcmSivParameters.Variant.NO_PREFIX)
+            .build();
+    byte[] keyMaterial =
+        new byte[] {
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35
+        };
+    com.google.crypto.tink.aead.AesGcmSivKey key =
+        AesGcmSivKeyManager.createAesGcmSivKeyFromRandomness(
+            parameters,
+            SlowInputStream.copyFrom(keyMaterial),
+            parameters.hasIdRequirement() ? 123 : null,
+            InsecureSecretKeyAccess.get());
+    byte[] truncatedKeyMaterial = Arrays.copyOf(keyMaterial, parameters.getKeySizeBytes());
+    Key expectedKey =
+        com.google.crypto.tink.aead.AesGcmSivKey.builder()
+            .setParameters(parameters)
+            .setIdRequirement(parameters.hasIdRequirement() ? 123 : null)
+            .setKeyBytes(SecretBytes.copyFrom(truncatedKeyMaterial, InsecureSecretKeyAccess.get()))
+            .build();
+    assertTrue(key.equalsKey(expectedKey));
   }
 }

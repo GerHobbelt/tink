@@ -27,9 +27,9 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/hashicorp/vault/api"
 	"github.com/google/tink/go/core/registry"
 	"github.com/google/tink/go/tink"
-	"github.com/hashicorp/vault/api"
 )
 
 const (
@@ -98,6 +98,10 @@ func (c *vaultClient) GetAEAD(keyURI string) (tink.AEAD, error) {
 	if !c.Supported(keyURI) {
 		return nil, errors.New("unsupported keyURI")
 	}
-
-	return newHCVaultAEAD(keyURI, c.client)
+	u, err := url.Parse(keyURI)
+	if err != nil || u.Scheme != "hcvault" {
+		return nil, errors.New("malformed keyURI")
+	}
+	keyPath := u.EscapedPath()
+	return newHCVaultAEAD(keyPath, c.client)
 }
